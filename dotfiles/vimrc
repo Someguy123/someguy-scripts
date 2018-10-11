@@ -25,9 +25,20 @@ function! ResCur()
     return 1
   endif
 endfunction
-
+" part of restore cursor to previous position
 augroup resCur
   autocmd!
   autocmd BufWinEnter * call ResCur()
 augroup END
+
+" make backspace work properly
 set backspace=indent,eol,start
+
+" highlight search items
+set hlsearch
+
+" use <F5> to toggle listchars (display whitespace and other invisible chars
+set listchars=eol:$,tab:>-,trail:~,extends:>,precedes:<
+noremap <F5> :set list!<CR>
+inoremap <F5> <C-o>:set list!<CR>
+cnoremap <F5> <C-c>:set list!<CR>
