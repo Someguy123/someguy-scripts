@@ -282,7 +282,7 @@ fi
 install_essential() {
     echo "${BLUE}Installing various packages...${RESET}"
     if [[ "$APT_UPDATED" == "n" ]]; then
-        apt update
+        sudo apt update
         APT_UPDATED="y"
     fi
     # convert the array of packages into a flat string
