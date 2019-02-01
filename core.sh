@@ -228,11 +228,12 @@ if [ -z ${INSTALL_PKGS+x} ]; then
         tmux screen
         # Security
         iptables-persistent fail2ban
+        # Network tools
+        mtr-tiny iputils-ping nmap netcat dnsutils
         # Development
         build-essential vim nano zsh
         # Server debugging/stats
-        htop mtr
-        sysstat # iotop
+        htop sysstat # sysstat = iotop
         # Compression/Decompression
         liblz4-tool # lz4 for fast compress/decompress
         zip unzip xz-utils
