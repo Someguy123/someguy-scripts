@@ -115,7 +115,8 @@ install_confs() {
         echo "Will now install it"
         install_omz
     fi
-
+    # For safety, exit on non-zero
+    set -e
     echo "${BLUE}Installing dotfiles...${RESET}"
     # first, see if there are any that will be overwritten and warn against it
     for file in $DIR/dotfiles/*; do
@@ -128,16 +129,29 @@ install_confs() {
         if [[ -f "$f_install_loc" ]]; then
             while true; do
                 echo "${YELLOW}WARNING: The file $f_install_loc already exists...${RESET}"
-                read -p "Do you want to overwrite this file? (y)es/(n)o/(v)iew existing > " yn
+                backupdir=$(dirname "$f_install_loc")
+                origname=$(basename "$f_install_loc")
+                backupname="backup-$(date +%Y-%m-%d).${origname}"
+                backuppath="${backupdir}/${backupname}"
+                echo "${YELLOW}Do you want to replace this file? (we'll back it up to '${backuppath}')${RESET}"
+                read -p " (y)es/(n)o/(v)iew existing > " yn
                 case $yn in
                     [Yy]* )
-                        echo "Copying from $file to $f_install_loc";
-                        cp -v "$file" "$f_install_loc"
+                        echo "${YELLOW} -> Backing up $f_install_loc to $backuppath ${RESET}"
+                        mv -v "$f_install_loc" "$backuppath"
+                        if [[ -f "$f_install_loc" ]]; then
+                            echo "${RED}${BOLD}ERROR: Something must've went wrong renaming this file, as $f_install_loc still exists${RESET}"
+                            echo "${RED}For your safety, we'll just skip this file.${RESET}"
+                            continue
+                        else
+                            echo "Copying from $file to $f_install_loc";
+                            cp -v "$file" "$f_install_loc"
+                        fi
                         break;;
                     [Vv]* ) cat "$f_install_loc";;
                     [Nn]* )
                         break;;
-                    * ) echo "Please answer yes (y), view existing (v) or no (n).";;
+                    * ) echo "${RED} !! Please answer yes (y), view existing (v) or no (n).${RESET}";;
                 esac
             done
             continue
@@ -150,6 +164,7 @@ install_confs() {
     echo "${BLUE}Installing zsh_files...${RESET}"
     for file in $DIR/zsh_files/*; do
         [ -e "$file" ] || continue # protect against failed match returning glob
+
         # remove the path to the file so we can add a dot to the start
         filename=$(basename -- "$file")
         f_install_loc="$CONFIG_DIR/.zsh_files/$filename"
@@ -160,16 +175,29 @@ install_confs() {
         if [[ -f "$f_install_loc" ]]; then
             while true; do
                 echo "${YELLOW}WARNING: The file $f_install_loc already exists...${RESET}"
-                read -p "Do you want to overwrite this file? (y)es/(n)o/(v)iew existing > " yn
+                backupdir=$(dirname "$f_install_loc")
+                origname=$(basename "$f_install_loc")
+                backupname="backup-$(date +%Y-%m-%d).${origname}"
+                backuppath="${backupdir}/${backupname}"
+                echo "${YELLOW}Do you want to replace this file? (we'll back it up to '${backuppath}')${RESET}"
+                read -p " (y)es/(n)o/(v)iew existing > " yn
                 case $yn in
                     [Yy]* )
-                        echo "Copying from $file to $f_install_loc";
-                        cp -v "$file" "$f_install_loc"
+                        echo "${YELLOW} -> Backing up $f_install_loc to $backuppath ${RESET}"
+                        mv -v "$f_install_loc" "$backuppath"
+                        if [[ -f "$f_install_loc" ]]; then
+                            echo "${RED}${BOLD}ERROR: Something must've went wrong renaming this file, as $f_install_loc still exists${RESET}"
+                            echo "${RED}For your safety, we'll just skip this file.${RESET}"
+                            continue
+                        else
+                            echo "Copying from $file to $f_install_loc";
+                            cp -v "$file" "$f_install_loc"
+                        fi
                         break;;
                     [Vv]* ) cat "$f_install_loc";;
                     [Nn]* )
                         break;;
-                    * ) echo "Please answer yes (y), view existing (v) or no (n).";;
+                    * ) echo "${RED} !! Please answer yes (y), view existing (v) or no (n).${RESET}";;
                 esac
             done
             continue
@@ -178,6 +206,7 @@ install_confs() {
             # for safety, use cp -i, just incase something is wrong with the overwrite check above
             cp -i -v "$file" "$f_install_loc"
         fi
+        
     done
     if [[ -f /etc/zsh_command_not_found ]]; then
         echo "${YELLOW} -> Removing --no-failure-msg from /etc/zsh_command_not_found to prevent a blank message when a command is not found"
@@ -187,6 +216,8 @@ install_confs() {
         echo "           You should remove '--no-failure-msg' otherwise you will get a blank message when a command is not found${RESET}"
     fi
     echo "${GREEN}All config files installed.${RESET}"
+    # Remove exit on error
+    set +e
 }
 
 harden() {
