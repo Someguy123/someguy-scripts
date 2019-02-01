@@ -68,10 +68,10 @@ pkg_not_found() {
     if ! [ -x "$(command -v $cmd)" ]; then
         echo "${YELLOW}WARNING: Command $cmd was not found. installing now...${NORMAL}"
         if [[ "$APT_UPDATED" == "n" ]]; then
-            apt update
+            sudo apt update
             APT_UPDATED="y"
         fi
-        apt install -y "$pkg"
+        sudo apt install -y "$pkg"
     fi
 }
 
@@ -96,7 +96,7 @@ install_omz() {
         # If this platform provides a "chsh" command (not Cygwin), do it, man!
         if hash chsh >/dev/null 2>&1; then
             printf "${BLUE}Time to change your default shell to zsh!${NORMAL}\n"
-            chsh -s $(grep /zsh$ /etc/shells | tail -1)
+            sudo chsh -s $(grep /zsh$ /etc/shells | tail -1) $(whoami)
         # Else, suggest the user do so manually.
         else
             printf "I can't change your shell automatically because this system does not have chsh.\n"
@@ -179,6 +179,13 @@ install_confs() {
             cp -i -v "$file" "$f_install_loc"
         fi
     done
+    if [[ -f /etc/zsh_command_not_found ]]; then
+        echo "${YELLOW} -> Removing --no-failure-msg from /etc/zsh_command_not_found to prevent a blank message when a command is not found"
+        sudo sed -i 's/--no-failure-msg //' /etc/zsh_command_not_found
+    else
+        echo "${YELLOW} !! Warning !! /etc/zsh_command_not found was not found. You may want to edit it manually after zsh is launched."
+        echo "           You should remove '--no-failure-msg' otherwise you will get a blank message when a command is not found${RESET}"
+    fi
     echo "${GREEN}All config files installed.${RESET}"
 }
 
@@ -188,14 +195,27 @@ harden() {
     read -p "${BLUE}Do you want to randomize the SSH port? (y/n)${RESET} > " chport
     if [[ "$chport" == "y" ]]; then
         export SSH_PORT=$(( ( RANDOM % 16383 )  + 49152 )) # random port for ssh
-        sed -i "/Port 22/c\Port ${SSH_PORT}" /etc/ssh/sshd_config
+        sudo sed -i "/Port 22/c\Port ${SSH_PORT}" /etc/ssh/sshd_config
         echo SSH PORT: $SSH_PORT
     fi
     read -p "${BLUE}Do you want to turn off password auth? (y/n)${RESET} > " nopass
     if [[ "$nopass" == "y" ]]; then
-        sed -i "/PasswordAuthentication yes/c\PasswordAuthentication no" /etc/ssh/sshd_config
-        echo "Password authentication disabled. Please make sure you have a key in ~/.ssh/authorized_keys"
+        sudo sed -i "/PasswordAuthentication yes/c\PasswordAuthentication no" /etc/ssh/sshd_config
+        echo "${YELLOW}Password authentication disabled. Please make sure you have a key in ~/.ssh/authorized_keys${RESET}"
     fi
+    echo "Here are your currently installed SSH keys:"
+    echo "=============================="
+    echo "${BLUE}${BOLD} $HOME/.ssh/authorized_keys:${RESET}"
+    cat ~/.ssh/authorized_keys
+    echo "${BLUE}${BOLD} /root/.ssh/authorized_keys:${RESET}"
+    sudo cat /root/.ssh/authorized_keys
+    read -p "${BLUE}Do you want to restart SSH? (y/n)${RESET} > " rstssh
+    if [[ "$rstssh" == "y" ]]; then
+        echo "${YELLOW}Restarting SSH...${RESET}"
+        sudo systemctl restart ssh
+        echo "${GREEN}Done! Please make sure you can log in on port ${SSH_PORT} ${RESET}"
+    fi
+
 }
 
 # If INSTALL_PKGS is set from the environment, we should use that.
@@ -243,12 +263,12 @@ install_essential() {
         fi
         pk_list+=" $pk"; 
     done
-    apt install -y $pk_list
+    sudo apt install -y $pk_list
     # Only upgrade pip if we know it was installed
     if [[ "$pipinst" == "y" ]]; then
         # Upgrade pip
         echo "${BLUE}Upgrading Python3 pip${RESET}"
-        pip3 install -U pip
+        sudo pip3 install -U pip
     fi
 }
 
