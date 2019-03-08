@@ -360,7 +360,7 @@ install_global() {
             cp() { sudo cp -vi "$@"; }
         fi
         echo "${YELLOW} >> Installing /etc/vim/vimrc.local${RESET}"
-        sudo mkdir /etc/vim > /dev/null
+        sudo mkdir /etc/vim &> /dev/null
         cp "$DIR/dotfiles/vimrc" /etc/vim/vimrc.local
 
         echo "${YELLOW} >> Installing /etc/tmux.conf${RESET}"
@@ -370,7 +370,7 @@ install_global() {
             owgit='n'
             read -p "${YELLOW}/etc/gitconfig already exists... overwrite? (y/n)${RESET} > " owgit
         fi
-        [[ "$owgit" == "y" ]] && cat << EOF | sudo tee /etc/gitconfig
+        [[ "$owgit" == "y" ]] && cat << EOF | sudo tee /etc/gitconfig >/dev/null
 [core]
 	excludesfile = /etc/gitignore
 EOF
@@ -378,12 +378,12 @@ EOF
         cp "$DIR/dotfiles/gitignore" /etc/gitignore
         
         echo "${YELLOW} >> Installing /etc/zsh/zsh_sg${RESET}"
-        sudo mkdir /etc/zsh > /dev/null
+        sudo mkdir /etc/zsh &> /dev/null
         cp "$DIR/dotfiles/zshrc" /etc/zsh/zsh_sg
 
         echo "${YELLOW} >> Adding source line to /etc/zsh/zshrc${RESET}"
 
-        cat << "EOF" | sudo tee -a /etc/zsh/zshrc
+        cat << "EOF" | sudo tee -a /etc/zsh/zshrc >/dev/null
 # Load zshrc from @someguy123/someguy-scripts only if user has no .zshrc
 if [[ ! -f "$HOME/.zshrc" ]]; then
     source /etc/zsh/zsh_sg
@@ -391,8 +391,8 @@ fi
 EOF
 
         echo "${YELLOW} >> Installing folder /etc/zsh_files/${RESET}"
-        sudo mkdir /etc/zsh_files > /dev/null
-        cp -r "$DIR/zsh_files/*" /etc/zsh_files/
+        sudo mkdir /etc/zsh_files &> /dev/null
+        cp -r "$DIR/zsh_files/"* /etc/zsh_files/
         
         echo "${YELLOW} >> Cloning oh-my-zsh into /etc/oh-my-zsh/${RESET}"        
         sudo git clone --depth=1 https://github.com/robbyrussell/oh-my-zsh.git /etc/oh-my-zsh
