@@ -408,10 +408,11 @@ fresh() {
     read -p "${YELLOW}Do you want to continue? (y/n)${RESET} > " should_fresh
     if [[ "$should_fresh" == "y" ]]; then
         IS_FRESH="y"
-        loc
-        instconf
-        global
-        hrd
+        fix_locale
+        install_essential
+        install_confs
+        install_global
+        harden
     else
         echo "${YELLOW} !! Cancelled.${RESET}"
     fi
