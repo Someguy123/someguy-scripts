@@ -322,7 +322,7 @@ install_essential() {
     if [[ "$pipinst" == "y" ]]; then
         # Upgrade pip
         echo "${BLUE}Upgrading Python3 pip${RESET}"
-        sudo pip3 install -U pip
+        sudo -H pip3 install -U pip
     fi
 }
 
