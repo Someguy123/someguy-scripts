@@ -19,6 +19,7 @@
 # - Can harden install (disables password auth, randomizes SSH port)
 # ------------------------------
 
+shopt -s expand_aliases
 
 # Detect the PWD of this file, so we can appropriately find 
 # the files needed, regardless of where it was ran from.
@@ -35,6 +36,13 @@ gnusafe || return 1 2>/dev/null || exit 1
 
 OMZSH_INSTALLED="n"
 APT_UPDATED="n"
+# set by 'fresh' function, bypasses overwrite confirmations etc.
+IS_FRESH='n'
+
+export LANGUAGE=en_US.UTF-8
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+export LC_CTYPE=en_US.UTF-8
 
 finish() {
     # start ZSH if it was installed
@@ -130,7 +138,7 @@ install_confs() {
         dotf=".$filename"
         f_install_loc="$CONFIG_DIR/$dotf"
         # if the file already exists, ask user if we should overwrite
-        if [[ -f "$f_install_loc" ]]; then
+        if [[ -f "$f_install_loc" && $IS_FRESH == "n" ]]; then
             while true; do
                 echo "${YELLOW}WARNING: The file $f_install_loc already exists...${RESET}"
                 backupdir=$(dirname "$f_install_loc")
@@ -176,7 +184,7 @@ install_confs() {
             mkdir -p "$CONFIG_DIR/.zsh_files"
         fi
         # if the file already exists, ask user if we should overwrite
-        if [[ -f "$f_install_loc" ]]; then
+        if [[ -f "$f_install_loc" && $IS_FRESH == "n" ]]; then
             while true; do
                 echo "${YELLOW}WARNING: The file $f_install_loc already exists...${RESET}"
                 backupdir=$(dirname "$f_install_loc")
@@ -216,7 +224,7 @@ install_confs() {
         echo "${YELLOW} -> Removing --no-failure-msg from /etc/zsh_command_not_found to prevent a blank message when a command is not found"
         sudo sed -i 's/--no-failure-msg //' /etc/zsh_command_not_found
     else
-        echo "${YELLOW} !! Warning !! /etc/zsh_command_not found was not found. You may want to edit it manually after zsh is launched."
+        echo "${YELLOW} !! Warning !! /etc/zsh_command_not_found was not found. You may want to edit it manually after zsh is launched."
         echo "           You should remove '--no-failure-msg' otherwise you will get a blank message when a command is not found${RESET}"
     fi
     echo "${GREEN}All config files installed.${RESET}"
@@ -308,6 +316,107 @@ install_essential() {
     fi
 }
 
+fix_locale() {
+    echo "${RED}This tool will remove /etc/default/locale, re-generate it with en_US.UTF-8, then generate the locale.${RESET}"
+    [[ "$IS_FRESH" == "n" ]] && read -p "${YELLOW}Do you want to continue? (y/n)${RESET} > " fxloc
+    if [[ "$fxloc" == "y" || $IS_FRESH == "y" ]]; then
+        echo "${YELLOW} >> Removing /etc/default/locale${RESET}"
+        sudo rm /etc/default/locale
+        echo "${YELLOW} >> Generating /etc/default/locale${RESET}"
+        cat << EOF | sudo tee /etc/default/locale
+LANGUAGE=en_US.UTF-8
+LANG=en_US.UTF-8
+LC_ALL=en_US.UTF-8
+LC_CTYPE=en_US.UTF-8
+EOF
+        echo "${YELLOW} >> Re-generating en_US.UTF-8 locale files ${RESET}"
+        sudo locale-gen en_US.UTF-8
+        echo "${GREEN}Finished. Your locale should be corrected now.${RESET}"
+        echo "You may wish to restart your shell, or set the below variables in your existing session:"
+        cat /etc/default/locale
+    else
+        echo "${YELLOW} !! Cancelled.${RESET}"
+    fi
+}
+
+install_global() {
+    echo "${RED}This tool will install various dotfile configs globally, so they are used by default for all users.${RESET}"
+    echo "Warnings will be given before overwriting the file."
+    [[ $IS_FRESH == "n" ]] && read -p "${YELLOW}Do you want to continue? (y/n)${RESET} > " instglob
+    if [[ "$instglob" == "y" || $IS_FRESH == "y" ]]; then
+        if [[ $IS_FRESH == "y" ]]; then
+            alias cp='sudo cp -v'
+        else
+            alias cp='sudo cp -vi'
+        fi
+        echo "${YELLOW} >> Installing /etc/vim/vimrc.local${RESET}"
+        sudo mkdir /etc/vim
+        cp "$DIR/dotfiles/vimrc" /etc/vim/vimrc.local
+
+        echo "${YELLOW} >> Installing /etc/tmux.conf${RESET}"
+        cp "$DIR/dotfiles/tmux.conf" /etc/tmux.conf
+        owgit='y'
+        if [[ -f /etc/gitconfig && $IS_FRESH == "n" ]]; then
+            owgit='n'
+            read -p "${YELLOW}/etc/gitconfig already exists... overwrite? (y/n)${RESET} > " owgit
+        fi
+        [[ "$owgit" == "y" ]] && cat << EOF | sudo tee /etc/gitconfig
+[core]
+	excludesfile = /etc/gitignore
+EOF
+        echo "${YELLOW} >> Installing /etc/gitignore${RESET}"
+        cp "$DIR/dotfiles/gitignore" /etc/gitignore
+        
+        echo "${YELLOW} >> Installing /etc/zsh/zsh_sg${RESET}"
+        sudo mkdir /etc/zsh
+        cp "$DIR/dotfiles/zshrc" /etc/zsh/zsh_sg
+
+        echo "${YELLOW} >> Adding source line to /etc/zsh/zshrc${RESET}"
+
+        cat << EOF | sudo tee -a /etc/zsh/zshrc
+# Load zshrc from @someguy123/someguy-scripts only if user has no .zshrc
+if [[ ! -f "$HOME/.zshrc" ]]; then
+    source /etc/zsh/zsh_sg
+fi
+EOF
+
+        echo "${YELLOW} >> Installing folder /etc/zsh_files/${RESET}"
+        sudo mkdir /etc/zsh_files
+        sudo cp -r "$DIR/zsh_files/*" /etc/zsh_files/
+        
+        echo "${YELLOW} >> Cloning oh-my-zsh into /etc/oh-my-zsh/${RESET}"        
+        sudo git clone --depth=1 https://github.com/robbyrussell/oh-my-zsh.git /etc/oh-my-zsh
+
+        echo "${GREEN}Finished. The configs should now work for all users${RESET}"
+        echo "${RED}NOTE: If a user has a .zshrc, the global zshrc should be ignored."
+        echo "      If it isn't, disable the global zshrc for a user by putting 'unset GLOBAL_RCS' into $$HOME/.zshenv${RESET}"
+    else
+        echo "${YELLOW} !! Cancelled.${RESET}"
+    fi
+}
+
+fresh() {
+    echo "${BLUE}Fresh install helper${RESET}"
+    echo "${BOLD}${RED}WARNING! Various warnings such as overwrite confirmations will be disabled${RESET}"
+    echo "This option will:
+    - Fix locale problems (set the system locale to en_US.UTF-8)
+    - Install useful packages
+    - Install dotfiles / oh-my-zsh, while automatically overwriting on conflict
+    - Install dotfiles / oh-my-zsh globally, again skipping conflict warnings
+    - Harden the server (this will still confirm port change + ssh keys for safety)
+    "
+    read -p "${YELLOW}Do you want to continue? (y/n)${RESET} > " should_fresh
+    if [[ "$should_fresh" == "y" ]]; then
+        IS_FRESH="y"
+        loc
+        instconf
+        global
+        hrd
+    else
+        echo "${YELLOW} !! Cancelled.${RESET}"
+    fi
+}
+
 while true; do
     echo
     echo "
@@ -320,8 +429,11 @@ controlled by letter choices
     ${GREEN}inst${RESET} - Install various useful packages
     ${GREEN}pk_list${RESET} - List the packages that 'inst' would install
     ${GREEN}conf${RESET} - Install dotfile configs + oh-my-zsh
+    ${GREEN}loc${RESET} - Fix locale problems - set locale to en_US.UTF-8 and re-gen locales
+    ${GREEN}global${RESET} - Install dotfile configs globally
     ${GREEN}instconf${RESET} - Run inst, then conf after
     ${GREEN}hrd${RESET} - Harden the server (set SSH port, turn off password auth etc.)
+    ${GREEN}fresh${RESET} - For fresh installs. Fix locale, install packages, configs, global configs, and harden
     ${GREEN}q${RESET} - Exit
 "
     read -p "Menu > " menu_choice
@@ -333,6 +445,12 @@ controlled by letter choices
         instconf )
             install_essential
             install_confs;;
+        loc )
+            fix_locale;;
+        global )
+            install_global;;
+        fresh )
+            fresh;;
         hrd )
             harden;;
         pk_list )
