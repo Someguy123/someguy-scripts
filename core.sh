@@ -170,7 +170,13 @@ install_confs() {
         else
             # the file doesn't exist, so it should be safe to copy to
             # for safety, use cp -i, just incase something is wrong with the overwrite check above
-            cp -i -v "$file" "$f_install_loc"
+            if [[ $IS_FRESH == "y" ]]; then
+                alias cp='cp -v'
+            else
+                alias cp='cp -vi'
+            fi
+            cp "$file" "$f_install_loc"
+            unalias cp
         fi
     done
     echo "${BLUE}Installing zsh_files...${RESET}"
@@ -216,7 +222,13 @@ install_confs() {
         else
             # the file doesn't exist, so it should be safe to copy to
             # for safety, use cp -i, just incase something is wrong with the overwrite check above
-            cp -i -v "$file" "$f_install_loc"
+            if [[ $IS_FRESH == "y" ]]; then
+                alias cp='cp -v'
+            else
+                alias cp='cp -vi'
+            fi
+            cp "$file" "$f_install_loc"
+            unalias cp
         fi
         
     done
