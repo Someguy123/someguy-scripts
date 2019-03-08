@@ -385,7 +385,7 @@ EOF
 
         echo "${YELLOW} >> Adding source line to /etc/zsh/zshrc${RESET}"
 
-        cat << EOF | sudo tee -a /etc/zsh/zshrc
+        cat << "EOF" | sudo tee -a /etc/zsh/zshrc
 # Load zshrc from @someguy123/someguy-scripts only if user has no .zshrc
 if [[ ! -f "$HOME/.zshrc" ]]; then
     source /etc/zsh/zsh_sg
