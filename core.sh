@@ -93,6 +93,10 @@ install_omz() {
     # If this user's login shell is not already "zsh", attempt to switch.
     TEST_CURRENT_SHELL=$(expr "$SHELL" : '.*/\(.*\)')
     if [ "$TEST_CURRENT_SHELL" != "zsh" ]; then
+        if ! [ -x "$(command -v zsh)" ]; then
+            echo "${RED}ERROR: zsh not found. not changing default shell.${NORMAL}"
+            return 1
+        fi
         # If this platform provides a "chsh" command (not Cygwin), do it, man!
         if hash chsh >/dev/null 2>&1; then
             printf "${BLUE}Time to change your default shell to zsh!${NORMAL}\n"
