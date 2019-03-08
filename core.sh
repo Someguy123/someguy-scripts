@@ -19,8 +19,6 @@
 # - Can harden install (disables password auth, randomizes SSH port)
 # ------------------------------
 
-shopt -s expand_aliases
-
 # Detect the PWD of this file, so we can appropriately find 
 # the files needed, regardless of where it was ran from.
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -171,12 +169,12 @@ install_confs() {
             # the file doesn't exist, so it should be safe to copy to
             # for safety, use cp -i, just incase something is wrong with the overwrite check above
             if [[ $IS_FRESH == "y" ]]; then
-                alias cp='cp -v'
+                cp() { cp -v "$@"; }
             else
-                alias cp='cp -vi'
+                cp() { cp -vi "$@"; }
             fi
             cp "$file" "$f_install_loc"
-            unalias cp
+            unset -f cp
         fi
     done
     echo "${BLUE}Installing zsh_files...${RESET}"
@@ -223,12 +221,12 @@ install_confs() {
             # the file doesn't exist, so it should be safe to copy to
             # for safety, use cp -i, just incase something is wrong with the overwrite check above
             if [[ $IS_FRESH == "y" ]]; then
-                alias cp='cp -v'
+                cp() { cp -v "$@"; }
             else
-                alias cp='cp -vi'
+                cp() { cp -vi "$@"; }
             fi
             cp "$file" "$f_install_loc"
-            unalias cp
+            unset -f cp
         fi
         
     done
@@ -357,12 +355,12 @@ install_global() {
     [[ $IS_FRESH == "n" ]] && read -p "${YELLOW}Do you want to continue? (y/n)${RESET} > " instglob
     if [[ "$instglob" == "y" || $IS_FRESH == "y" ]]; then
         if [[ $IS_FRESH == "y" ]]; then
-            alias cp='sudo cp -v'
+            cp() { sudo cp -v "$@"; }
         else
-            alias cp='sudo cp -vi'
+            cp() { sudo cp -vi "$@"; }
         fi
         echo "${YELLOW} >> Installing /etc/vim/vimrc.local${RESET}"
-        sudo mkdir /etc/vim
+        sudo mkdir /etc/vim > /dev/null
         cp "$DIR/dotfiles/vimrc" /etc/vim/vimrc.local
 
         echo "${YELLOW} >> Installing /etc/tmux.conf${RESET}"
@@ -380,7 +378,7 @@ EOF
         cp "$DIR/dotfiles/gitignore" /etc/gitignore
         
         echo "${YELLOW} >> Installing /etc/zsh/zsh_sg${RESET}"
-        sudo mkdir /etc/zsh
+        sudo mkdir /etc/zsh > /dev/null
         cp "$DIR/dotfiles/zshrc" /etc/zsh/zsh_sg
 
         echo "${YELLOW} >> Adding source line to /etc/zsh/zshrc${RESET}"
@@ -393,8 +391,8 @@ fi
 EOF
 
         echo "${YELLOW} >> Installing folder /etc/zsh_files/${RESET}"
-        sudo mkdir /etc/zsh_files
-        sudo cp -r "$DIR/zsh_files/*" /etc/zsh_files/
+        sudo mkdir /etc/zsh_files > /dev/null
+        cp -r "$DIR/zsh_files/*" /etc/zsh_files/
         
         echo "${YELLOW} >> Cloning oh-my-zsh into /etc/oh-my-zsh/${RESET}"        
         sudo git clone --depth=1 https://github.com/robbyrussell/oh-my-zsh.git /etc/oh-my-zsh
