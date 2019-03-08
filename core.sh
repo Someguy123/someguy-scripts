@@ -169,9 +169,9 @@ install_confs() {
             # the file doesn't exist, so it should be safe to copy to
             # for safety, use cp -i, just incase something is wrong with the overwrite check above
             if [[ $IS_FRESH == "y" ]]; then
-                cp() { cp -v "$@"; }
+                cp() { env cp -v "$@"; }
             else
-                cp() { cp -vi "$@"; }
+                cp() { env cp -vi "$@"; }
             fi
             cp "$file" "$f_install_loc"
             unset -f cp
@@ -221,9 +221,9 @@ install_confs() {
             # the file doesn't exist, so it should be safe to copy to
             # for safety, use cp -i, just incase something is wrong with the overwrite check above
             if [[ $IS_FRESH == "y" ]]; then
-                cp() { cp -v "$@"; }
+                cp() { env cp -v "$@"; }
             else
-                cp() { cp -vi "$@"; }
+                cp() { env cp -vi "$@"; }
             fi
             cp "$file" "$f_install_loc"
             unset -f cp
