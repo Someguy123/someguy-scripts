@@ -399,7 +399,7 @@ EOF
 
         echo "${GREEN}Finished. The configs should now work for all users${RESET}"
         echo "${RED}NOTE: If a user has a .zshrc, the global zshrc should be ignored."
-        echo "      If it isn't, disable the global zshrc for a user by putting 'unset GLOBAL_RCS' into $$HOME/.zshenv${RESET}"
+        echo "      If it isn't, disable the global zshrc for a user by putting 'unset GLOBAL_RCS' into \$HOME/.zshenv${RESET}"
     else
         echo "${YELLOW} !! Cancelled.${RESET}"
     fi
