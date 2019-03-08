@@ -141,7 +141,7 @@ export NVM_DIR="$HOME/.nvm"
 export EDITOR='vim'
 
 # for Linux servers, if running as a normal user, alias important commands to use sudo
-if [[ "$(uname -s)" == "Linux" && [[ $UID != 0 && $EUID != 0 ]] ]]; then
+if [[ "$(uname -s)" == "Linux" && $UID != 0 && $EUID != 0 ]]; then
   alias su='sudo su -'
   alias apt='sudo apt'
   alias apt-get='sudo apt-get'
