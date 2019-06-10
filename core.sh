@@ -377,9 +377,10 @@ EOF
         echo "${YELLOW} >> Installing /etc/gitignore${RESET}"
         cp "$DIR/dotfiles/gitignore" /etc/gitignore
         
-        echo "${YELLOW} >> Installing /etc/zsh/zsh_sg${RESET}"
+        echo "${YELLOW} >> Installing /etc/zsh/zsh_sg and /etc/skel/.zshrc${RESET}"
         sudo mkdir /etc/zsh &> /dev/null
         cp "$DIR/dotfiles/zshrc" /etc/zsh/zsh_sg
+        cp "$DIR/dotfiles/zshrc" /etc/skel/.zshrc
 
         echo "${YELLOW} >> Adding source line to /etc/zsh/zshrc${RESET}"
 
