@@ -34,7 +34,30 @@
 #
 #####
 rpc-rq() {
+    local rpcverbose="n"
+    if [[ "$1" == "-v" || "$1" == "--verbose" ]]; then
+        rpcverbose="y"
+        shift
+    fi
     local PARAMS="[]"
+    if [[ "$#" -eq 0 ]]; then
+        echo "
+=== USAGE ===
+ Current default RPC: $DEFAULT_STM_RPC
+ $ rpc-rq get_dynamic_global_properties
+ Single arg: host=default, method=\$1, params=[]
+
+ $ rpc-rq https://steemd.privex.io get_dynamic_global_properties
+ $ rpc-rq get_dynamic_global_properties '[]'
+ Two args: Detects if first arg is host.
+   If host: host=\$1, method=\$2, params=[]
+   If not:  host=default, method=\$1, params=\$2
+ 
+ $ rpc-rq https://steemd.privex.io get_dynamic_global_properties '[]'
+ Three args: host=\$1 method=\$2 params=\$3
+"
+        return 1
+    fi
     # if 1 arg, 1 = method, params = default, host = default
     if [[ "$#" -eq 1 ]]; then
         local HOST="$DEFAULT_STM_RPC"
@@ -58,8 +81,14 @@ rpc-rq() {
         local PARAMS="$3"
     fi
     local data="{\"jsonrpc\": \"2.0\", \"method\": \"$METHOD\", \"params\": $PARAMS, \"id\": 1 }"
-    curl -s -S -f --data "$data" "$HOST"
-    return $?
+    # s = silent, S = show errors when silent, f = fail silently and return error code 22 on error
+    if [[ "$rpcverbose" == "y" ]]; then
+        curl -v --data "$data" "$HOST"
+        return $?
+    else
+        curl -s -S -f --data "$data" "$HOST"
+        return $?
+    fi
 }
 
 #####
@@ -102,7 +131,7 @@ rpc-get-block() {
 
 #####
 # Queries an RPC server for all dynamic properties
-#
+# If node not specified, uses DEFAULT_STM_RPC
 # $ rpc-get-all-dynamic https://steemd.privex.io
 # {
 #  "head_block_number": 26549358,
@@ -115,8 +144,24 @@ rpc-get-block() {
 #
 #####
 rpc-get-all-dynamic() {
-    local c;
-    c=$(rpc-rq "$1" condenser_api.get_dynamic_global_properties)
+    local rpcverbose="n"
+    if [[ "$1" == "-v" || "$1" == "--verbose" ]]; then
+        rpcverbose="y"
+        shift
+    fi
+    local c
+    local stmnode="$DEFAULT_STM_RPC"
+    
+    if [[ "$#" -ge 1 ]]; then
+        stmnode="$1"
+    fi
+
+    if [[ "$rpcverbose" == "y" ]]; then
+        c=$(rpc-rq -v "$stmnode" condenser_api.get_dynamic_global_properties)
+        echo "Server result: $c"
+    else
+        c=$(rpc-rq "$stmnode" condenser_api.get_dynamic_global_properties)
+    fi
     if [[ "$?" -ne 0 ]]; then
         echo "RPC NODE IS DEAD?"
         echo "$c"

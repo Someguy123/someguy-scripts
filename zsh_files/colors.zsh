@@ -33,6 +33,31 @@ else
     RESET=""
 fi
 
+# easy coloured messages function
+# written by @someguy123
+function msg () {
+    # usage: msg [color] message
+    if [[ "$#" -eq 0 ]]; then echo ""; return; fi;
+    if [[ "$#" -eq 1 ]]; then
+        echo "$1"
+        return
+    fi
+    if [[ "$#" -gt 2 ]] && [[ "$1" == "bold" ]]; then
+        echo -n "${BOLD}"
+        shift
+    fi
+    case "$1" in
+        bold) echo "${BOLD}${@:2}${RESET}";;
+        [Bb]*) echo "${BLUE}${@:2}${RESET}";;
+        [Yy]*) echo "${YELLOW}${@:2}${RESET}";;
+        [Rr]*) echo "${RED}${@:2}${RESET}";;
+        [Gg]*) echo "${GREEN}${@:2}${RESET}";;
+        * ) echo "${@:2}";;
+    esac
+}
+# make msg + colors available to subshells
+# use -f for msg if using bash
+export msg RED GREEN YELLOW BLUE BOLD NORMAL RESET
 #####
 #
 # This color code snippet was borrowed from oh-my-zsh's install script
