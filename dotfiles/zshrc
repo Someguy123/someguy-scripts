@@ -14,7 +14,9 @@ fi
 # it'll load a random theme each time that oh-my-zsh is loaded.
 # See https://github.com/robbyrussell/oh-my-zsh/wiki/Themes
 ZSH_THEME="fino"
-
+# Note: THEMES ARE CasE SenSItIvE
+# best user themes: Soliah fino bira dstufft candy obraun jreese
+# best root themes: flazz afowler dstufft
 
 # Uncomment the following line to use case-sensitive completion.
 # CASE_SENSITIVE="true"
@@ -120,9 +122,35 @@ myip6 () {
 # quick edit access to zshrc and vimrc
 alias zshrc="vim ~/.zshrc"
 alias vimrc="vim ~/.vimrc"
+
+###
 # Python Virtualenv shortcuts
-alias activate="source venv/bin/activate"
-alias mkvenv="python3 -m venv venv; echo 'Made virtual env @ ./venv'"
+###
+
+activate() {
+    local envdir="./venv"
+    if [[ "$#" -gt 0 ]]; then envdir="$1"; fi
+    source "${envdir}/bin/activate"
+    msg bold green "Activated virtualenv in $envdir"
+}
+
+# Usage:  mkvenv [python_exe] [env_folder]
+# mkvenv                  # no args = use system python3 and make in ./venv
+# mkvenv python3.7        # use system python3.7 and make in ./venv
+# mkvenv python3.6 ./env  # use system python3.6 and make in ./env
+mkvenv() {
+    local pyexe="python3"
+    local envdir="./venv"
+    if [[ "$#" -gt 0 ]]; then pyexe="$1"; fi
+    if [[ "$#" -gt 1 ]]; then envdir="$2"; fi
+    local pyver=$(/usr/bin/env "$pyexe" -V)
+    /usr/bin/env "$pyexe" -m venv "$envdir"
+    msg bold green "Made virtual env using $pyver @ $envdir"
+}
+
+###
+# Other small aliases and helpers
+###
 
 alias l='ls -lah'
 export LS_OPTIONS='--color=auto'
@@ -153,3 +181,4 @@ if [[ "$(uname -s)" == "Linux" && $UID != 0 && $EUID != 0 ]]; then
   alias ifconfig='sudo ifconfig'
   alias route='sudo route'
 fi
+

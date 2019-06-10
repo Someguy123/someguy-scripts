@@ -27,6 +27,9 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # by using CONFIG_DIR=/where/you/want ./core.sh
 : ${CONFIG_DIR="$HOME"}
 
+# List of locales to generate, will uncomment all locales starting with the given string
+# e.g. en_GB will cover en_GB.UTF-8 as well as en_GB.ISO-8859-1 etc.
+: ${ENABLE_LOCALES=('en_GB' 'en_US')}
 . "$DIR/zsh_files/colors.zsh"  # Load terminal colors
 . "$DIR/zsh_files/gnusafe.zsh" # GNU Tools Safety checker
 # make sure we have gnu utilities, otherwise exit
@@ -330,6 +333,8 @@ fix_locale() {
     echo "${RED}This tool will remove /etc/default/locale, re-generate it with en_US.UTF-8, then generate the locale.${RESET}"
     [[ "$IS_FRESH" == "n" ]] && read -p "${YELLOW}Do you want to continue? (y/n)${RESET} > " fxloc
     if [[ "$fxloc" == "y" || $IS_FRESH == "y" ]]; then
+        echo "${YELLOW} >> Making sure the 'locales' package is installed...${RESET}"
+        apt install -qy locales >/dev/null
         echo "${YELLOW} >> Removing /etc/default/locale${RESET}"
         sudo rm /etc/default/locale
         echo "${YELLOW} >> Generating /etc/default/locale${RESET}"
@@ -339,9 +344,15 @@ LANG=en_US.UTF-8
 LC_ALL=en_US.UTF-8
 LC_CTYPE=en_US.UTF-8
 EOF
-        echo "${YELLOW} >> Re-generating en_US.UTF-8 locale files ${RESET}"
-        sudo locale-gen en_US.UTF-8
-        echo "${GREEN}Finished. Your locale should be corrected now.${RESET}"
+        
+        echo "${YELLOW} >> Enabling locales in /etc/locale.gen specified in ENABLE_LOCALES  ${RESET}"
+        for l in "${ENABLE_LOCALES[@]}"; do
+            echo "${YELLOW} ... Uncommenting locales starting with $l ${RESET}"
+            sudo sed -i "/^#.* ${l}.*/s/^# //g" /etc/locale.gen
+        done
+        echo "${YELLOW} >> Re-generating locale files ${RESET}"
+        sudo locale-gen
+        echo "${GREEN}${BOLD}Finished. Your locale should be corrected now.${RESET}"
         echo "You may wish to restart your shell, or set the below variables in your existing session:"
         cat /etc/default/locale
     else
