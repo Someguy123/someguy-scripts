@@ -362,22 +362,25 @@ EOF
 }
 
 install_global() {
-    echo "${RED}This tool will install various dotfile configs globally, so they are used by default for all users.${RESET}"
+    local instovr="n" instglob="n" owgit='y'
+    msg red "This tool will install various dotfile configs globally, so they are used by default for all users."
     echo "Warnings will be given before overwriting the file."
-    [[ $IS_FRESH == "n" ]] && read -p "${YELLOW}Do you want to continue? (y/n)${RESET} > " instglob
+    [[ $IS_FRESH == "n" ]] && read -p "${YELLOW}Do you want to continue? (y/N)${RESET} > " instglob
     if [[ "$instglob" == "y" || $IS_FRESH == "y" ]]; then
+        [[ $IS_FRESH == "n" ]] && read -p "${YELLOW}Skip all warnings and overwrite WITHOUT asking? (y/N)${RESET} > " instovr
+        [[ "$instovr" == "y" ]] && IS_FRESH='y'
         if [[ $IS_FRESH == "y" ]]; then
             cp() { sudo cp -v "$@"; }
         else
             cp() { sudo cp -vi "$@"; }
         fi
-        echo "${YELLOW} >> Installing /etc/vim/vimrc.local${RESET}"
+        msg yellow " >> Installing /etc/vim/vimrc.local"
         sudo mkdir /etc/vim &> /dev/null
         cp "$DIR/dotfiles/vimrc" /etc/vim/vimrc.local
 
-        echo "${YELLOW} >> Installing /etc/tmux.conf${RESET}"
+        msg yellow " >> Installing /etc/tmux.conf"
         cp "$DIR/dotfiles/tmux.conf" /etc/tmux.conf
-        owgit='y'
+
         if [[ -f /etc/gitconfig && $IS_FRESH == "n" ]]; then
             owgit='n'
             read -p "${YELLOW}/etc/gitconfig already exists... overwrite? (y/n)${RESET} > " owgit
@@ -386,36 +389,45 @@ install_global() {
 [core]
 	excludesfile = /etc/gitignore
 EOF
-        echo "${YELLOW} >> Installing /etc/gitignore${RESET}"
+        msg yellow " >> Installing /etc/gitignore"
         cp "$DIR/dotfiles/gitignore" /etc/gitignore
         
-        echo "${YELLOW} >> Installing /etc/zsh/zsh_sg and /etc/skel/.zshrc${RESET}"
+        msg yellow " >> Installing /etc/zsh/zsh_sg and /etc/skel/.zshrc"
         sudo mkdir /etc/zsh &> /dev/null
         cp "$DIR/dotfiles/zshrc" /etc/zsh/zsh_sg
-        cp "$DIR/dotfiles/zshrc" /etc/skel/.zshrc
+        cp "$DIR/extras/zsh_skel" /etc/skel/.zshrc
 
-        echo "${YELLOW} >> Adding source line to /etc/zsh/zshrc${RESET}"
+        msg yellow " >> Adding source line to /etc/zsh/zshrc"
 
-        cat << "EOF" | sudo tee -a /etc/zsh/zshrc >/dev/null
+        if grep -q "source /etc/zsh/zsh_sg" /etc/zsh/zshrc; then
+            msg yellow " ... Skipping adding source line to /etc/zsh/zshrc as it's already there"
+        else
+            cat << "EOF" | sudo tee -a /etc/zsh/zshrc >/dev/null
 # Load zshrc from @someguy123/someguy-scripts only if user has no .zshrc
 if [[ ! -f "$HOME/.zshrc" ]]; then
     source /etc/zsh/zsh_sg
 fi
 EOF
+        fi
 
-        echo "${YELLOW} >> Installing folder /etc/zsh_files/${RESET}"
+        msg yellow " >> Installing folder /etc/zsh_files/"
         sudo mkdir /etc/zsh_files &> /dev/null
         cp -r "$DIR/zsh_files/"* /etc/zsh_files/
         
-        echo "${YELLOW} >> Cloning oh-my-zsh into /etc/oh-my-zsh/${RESET}"        
-        sudo git clone --depth=1 https://github.com/robbyrussell/oh-my-zsh.git /etc/oh-my-zsh
-
-        echo "${GREEN}Finished. The configs should now work for all users${RESET}"
-        echo "${RED}NOTE: If a user has a .zshrc, the global zshrc should be ignored."
-        echo "      If it isn't, disable the global zshrc for a user by putting 'unset GLOBAL_RCS' into \$HOME/.zshenv${RESET}"
+        if [[ -d "/etc/oh-my-zsh" ]]; then
+            msg yellow " ... Skipping oh-my-zsh clone as /etc/oh-my-zsh already exists"
+        else
+            msg yellow " >> Cloning oh-my-zsh into /etc/oh-my-zsh/"
+            sudo git clone --depth=1 https://github.com/robbyrussell/oh-my-zsh.git /etc/oh-my-zsh
+        fi
+        
+        msg bold green "Finished. The configs should now work for all users"
+        msg red "NOTE: If a user has a .zshrc, the global zshrc should be ignored."
+        msg red "      If it isn't, disable the global zshrc for a user by putting 'unset GLOBAL_RCS' into \$HOME/.zshenv"
     else
-        echo "${YELLOW} !! Cancelled.${RESET}"
+        msg bold yellow " !! Cancelled."
     fi
+    [[ "$instovr" == "y" ]] && IS_FRESH='n'
 }
 
 fresh() {

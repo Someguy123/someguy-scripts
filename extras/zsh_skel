@@ -1,0 +1,52 @@
+#!/usr/bin/env zsh
+###
+# ZSH Skeleton file for github.com/someguy123/someguy-scripts
+# 
+# To allow for easy updates of zshrc and zsh_files, this skeleton .zshrc loads the basic
+# configuration from /etc/zsh and should have been automatically installed into /etc/skel/.zshrc
+# so that it's added to new users home dirs by default.
+#
+# Add your user specific customisations into ~/.zshrc
+###
+
+# Keep this set to 'y' to prevent the /etc/zsh/zsh_sg from overriding any
+# oh-my-zsh / zsh customization variables such as ZSH_THEME
+SG_OVERRIDE='y'
+
+#####
+# Set any oh-my-zsh config variables BEFORE we load zsh_sg, otherwise oh-my-zsh
+# would already be loaded and will ignore any config changes
+#####
+
+# Set name of the theme to load. Optionally, if you set this to "random"
+# it'll load a random theme each time that oh-my-zsh is loaded.
+# See https://github.com/robbyrussell/oh-my-zsh/wiki/Themes
+
+ZSH_THEME="fino"     # Note: THEMES ARE CasE SenSItIvE
+
+# best user themes: Soliah fino bira dstufft candy obraun jreese
+# best root themes: flazz afowler dstufft
+
+# CASE_SENSITIVE="true"          # Uncomment the following line to use case-sensitive completion.
+# DISABLE_AUTO_UPDATE="true"     # Uncomment the following line to disable bi-weekly auto-update checks.
+# export UPDATE_ZSH_DAYS=13      # Uncomment the following line to change how often to auto-update (in days).
+# DISABLE_LS_COLORS="true"       # Uncomment the following line to disable colors in ls.
+# DISABLE_AUTO_TITLE="true"      # Uncomment the following line to disable auto-setting terminal title.
+# ENABLE_CORRECTION="true"       # Uncomment the following line to enable command auto-correction.
+# COMPLETION_WAITING_DOTS="true" # Show '...' while waiting for tab completion (SG default: true)
+# HYPHEN_INSENSITIVE="true"      # Make _ and - interchangable, e.g. `cat my-file` is the same as `cat my_file`
+# DISABLE_UNTRACKED_FILES_DIRTY="true"   # don't mark VCS untracked files as dirty - speeds up git/svn integration on large repos
+# HIST_STAMPS="mm/dd/yyyy"
+# plugins=()                     # List of plugins to enable, SG's defaults: (git command-not-found docker)
+
+# Load the global copy of @someguy123's zshrc - any OMZ configuration needs to be done BEFORE these two lines.
+sg_zsh="/etc/zsh/zsh_sg"
+[[ -f "$sg_zsh" ]] && source "$sg_zsh" || echo "WARNING: Failed to load $sg_zsh - you may need to investigate"
+
+#####
+# Add below any user-specific customisations that don't need to be ran before oh-my-zsh
+#####
+
+
+# alias getkey='cat ~/steem-docker/data/witness_node_data_dir/config.ini | grep --context=2 STM'
+# alias lwit='docker logs --tail=50 --follow witness'

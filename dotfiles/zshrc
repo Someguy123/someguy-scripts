@@ -1,3 +1,17 @@
+#####
+# Someguy123's Customized .zshrc
+#
+# From github.com/someguy123/someguy-scripts
+# License: GNU AGPLv3
+#
+# If this file is located in /etc/zsh - do not modify it! Instead, make your user customizations in ~/.zshrc
+#
+# If someguy-scripts didn't install a local .zshrc, you may need to copy it from /etc/skel
+#
+#    cp /etc/skel/.zshrc ~/.zshrc
+#
+#####
+
 # If you come from bash you might have to change your $PATH.
 # export PATH=$HOME/bin:/usr/local/bin:$PATH
 # Path to your oh-my-zsh installation.
@@ -9,47 +23,36 @@ else
   echo "CRITICAL ERROR: could not find oh-my-zsh in $HOME/.oh-my-zsh or /etc/oh-my-zsh"
 fi
 
+# If sourcing this file and you want to override any oh-my-zsh settings such as ZSH_THEME
+# then set this to 'y' in your script before sourcing this file
+: ${SG_OVERRIDE='n'}
 
 # Set name of the theme to load. Optionally, if you set this to "random"
 # it'll load a random theme each time that oh-my-zsh is loaded.
 # See https://github.com/robbyrussell/oh-my-zsh/wiki/Themes
-ZSH_THEME="fino"
+[ -z ${ZSH_THEME+x} || $SG_OVERRIDE == 'n' ] && ZSH_THEME="fino"
 # Note: THEMES ARE CasE SenSItIvE
 # best user themes: Soliah fino bira dstufft candy obraun jreese
 # best root themes: flazz afowler dstufft
 
-# Uncomment the following line to use case-sensitive completion.
-# CASE_SENSITIVE="true"
+# CASE_SENSITIVE="true"        # Uncomment the following line to use case-sensitive completion.
+# DISABLE_AUTO_UPDATE="true"   # Uncomment the following line to disable bi-weekly auto-update checks.
+# export UPDATE_ZSH_DAYS=13    # Uncomment the following line to change how often to auto-update (in days).
+# DISABLE_LS_COLORS="true"     # Uncomment the following line to disable colors in ls.
+# DISABLE_AUTO_TITLE="true"    # Uncomment the following line to disable auto-setting terminal title.
+# ENABLE_CORRECTION="true"     # Uncomment the following line to enable command auto-correction.
+# Display red dots whilst waiting for completion.
+[ -z ${COMPLETION_WAITING_DOTS+x} || $SG_OVERRIDE == 'n' ] && COMPLETION_WAITING_DOTS="true"
 
-# Uncomment the following line to use hyphen-insensitive completion. Case
-# sensitive completion must be off. _ and - will be interchangeable.
+# Uncomment the following line to use hyphen-insensitive completion. 
+# Case sensitive completion must be off. _ and - will be interchangeable.
 # HYPHEN_INSENSITIVE="true"
 
-# Uncomment the following line to disable bi-weekly auto-update checks.
-# DISABLE_AUTO_UPDATE="true"
-
-# Uncomment the following line to change how often to auto-update (in days).
-# export UPDATE_ZSH_DAYS=13
-
-# Uncomment the following line to disable colors in ls.
-# DISABLE_LS_COLORS="true"
-
-# Uncomment the following line to disable auto-setting terminal title.
-# DISABLE_AUTO_TITLE="true"
-
-# Uncomment the following line to enable command auto-correction.
-# ENABLE_CORRECTION="true"
-
-# Uncomment the following line to display red dots whilst waiting for completion.
-COMPLETION_WAITING_DOTS="true"
-
-# Uncomment the following line if you want to disable marking untracked files
-# under VCS as dirty. This makes repository status check for large repositories
-# much, much faster.
+# Uncomment the following line if you want to disable marking untracked files under VCS as dirty. This makes repository 
+# status check for large repositories much, much faster.
 # DISABLE_UNTRACKED_FILES_DIRTY="true"
 
-# Uncomment the following line if you want to change the command execution time
-# stamp shown in the history command output.
+# Uncomment the following line if you want to change the command execution time stamp shown in the history command output. 
 # The optional three formats: "mm/dd/yyyy"|"dd.mm.yyyy"|"yyyy-mm-dd"
 # HIST_STAMPS="mm/dd/yyyy"
 
@@ -58,23 +61,22 @@ COMPLETION_WAITING_DOTS="true"
 # Example format: plugins=(rails git textmate ruby lighthouse)
 # Add wisely, as too many plugins slow down shell startup.
 
-plugins=(
-  git
-  command-not-found
-  docker
-)
+[ -z ${plugins+x} || $SG_OVERRIDE == 'n' ] && plugins=(git command-not-found docker)
 
-source $ZSH/oh-my-zsh.sh
+function reload_omz() { source "$ZSH/oh-my-zsh.sh"; }
+reload_omz
 
 # Global simple line separator used by the various helpers
 LINE="============================================"
 
-# load zsh_files from homedir. if that's not found, try etc
-if [[ -d "$HOME/.zsh_files" ]]; then
-  ZSHFILES_DIR="$HOME/.zsh_files"
-elif [[ -d "/etc/zsh_files" ]]; then
-  ZSHFILES_DIR="/etc/zsh_files"
-fi
+# if ZSHFILES_DIR isn't set by a sourcing script then load zsh_files from homedir. if that's not found, try etc
+[ -z ${ZSHFILES_DIR+x} ] && {
+  if [[ -d "$HOME/.zsh_files" ]]; then
+    ZSHFILES_DIR="$HOME/.zsh_files"
+  elif [[ -d "/etc/zsh_files" ]]; then
+    ZSHFILES_DIR="/etc/zsh_files"
+  fi
+}
 
 if ! [ -z ${ZSHFILES_DIR+x} ]; then 
   # load script helpers
@@ -91,6 +93,15 @@ else
   echo "WARNING: failed to find ~/.zsh_files and /etc/zsh_files - some things may break..."
 fi
 
+# Easily change between OMZ themes with a single command
+# Usage: try-theme [theme name]  ##  Example: try-theme obraun
+function try-theme() {
+  [[ "$#" -lt 1 ]] && { msg red "No theme specified.\nUsage: try-theme [theme name]"; return; }
+  msg green "Changing from theme '$ZSH_THEME' to '$1'"
+  export ZSH_THEME="$1"
+  reload_omz
+}
+
 # enable "help" for zsh built-ins
 # e.g. $ help read
 unalias run-help 2>/dev/null
@@ -101,7 +112,7 @@ autoload run-help
 alias help=run-help
 
 # small helpers to get external IPv4 and IPv6
-myip () {
+function myip () {
   echo "${RED}$LINE"
   echo
   echo "${BLUE}IPv4:${RESET}"
@@ -112,10 +123,10 @@ myip () {
   echo
   echo "${RED}$LINE${RESET}"
 }
-myip4 () {
+function myip4 () {
   curl -4 -fsSL http://icanhazip.com
 }
-myip6 () {
+function myip6 () {
   curl -6 -fsSL http://icanhazip.com
 }
 
@@ -127,7 +138,7 @@ alias vimrc="vim ~/.vimrc"
 # Python Virtualenv shortcuts
 ###
 
-activate() {
+function activate() {
     local envdir="./venv"
     if [[ "$#" -gt 0 ]]; then envdir="$1"; fi
     source "${envdir}/bin/activate"
@@ -138,7 +149,7 @@ activate() {
 # mkvenv                  # no args = use system python3 and make in ./venv
 # mkvenv python3.7        # use system python3.7 and make in ./venv
 # mkvenv python3.6 ./env  # use system python3.6 and make in ./env
-mkvenv() {
+function mkvenv() {
     local pyexe="python3"
     local envdir="./venv"
     if [[ "$#" -gt 0 ]]; then pyexe="$1"; fi
@@ -159,6 +170,7 @@ if [ -x "$(command -v dircolors)" ]; then
   alias ls='ls $LS_OPTIONS'
   alias ll='ls $LS_OPTIONS -l'
   alias l='ls $LS_OPTIONS -lah'
+  alias la='ls $LS_OPTIONS -la'
 fi
 
 # Node Version Manager
@@ -177,7 +189,12 @@ if [[ "$(uname -s)" == "Linux" && $UID != 0 && $EUID != 0 ]]; then
   alias sysctl='sudo sysctl'
   alias service='sudo service'
   alias journalctl='sudo journalctl'
-  alias ip='sudo ip'
+
+  # Basic commands such as `ip addr` and `ip route` shouldn't require sudo
+  # Don't use `sudo ip` if there's 0 or only 1 arg, allowing ip to work on accounts with no sudo privilege
+  function ip() {
+    [[ "$#" -gt 1 ]] && sudo /usr/bin/env ip "$@" || /usr/bin/env ip "$@"
+  }
   alias ifconfig='sudo ifconfig'
   alias route='sudo route'
 fi
