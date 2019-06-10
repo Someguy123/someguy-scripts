@@ -29,7 +29,8 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # List of locales to generate, will uncomment all locales starting with the given string
 # e.g. en_GB will cover en_GB.UTF-8 as well as en_GB.ISO-8859-1 etc.
-: ${ENABLE_LOCALES=('en_GB' 'en_US')}
+ENABLE_LOCALES=('en_GB' 'en_US')
+
 . "$DIR/zsh_files/colors.zsh"  # Load terminal colors
 . "$DIR/zsh_files/gnusafe.zsh" # GNU Tools Safety checker
 # make sure we have gnu utilities, otherwise exit
