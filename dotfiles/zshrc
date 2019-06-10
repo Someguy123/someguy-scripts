@@ -30,7 +30,7 @@ fi
 # Set name of the theme to load. Optionally, if you set this to "random"
 # it'll load a random theme each time that oh-my-zsh is loaded.
 # See https://github.com/robbyrussell/oh-my-zsh/wiki/Themes
-[ -z ${ZSH_THEME+x} || $SG_OVERRIDE == 'n' ] && ZSH_THEME="fino"
+(( ! ${+ZSH_THEME} )) || [[ "$SG_OVERRIDE" == 'n' ]] && ZSH_THEME='fino'
 # Note: THEMES ARE CasE SenSItIvE
 # best user themes: Soliah fino bira dstufft candy obraun jreese
 # best root themes: flazz afowler dstufft
@@ -42,7 +42,7 @@ fi
 # DISABLE_AUTO_TITLE="true"    # Uncomment the following line to disable auto-setting terminal title.
 # ENABLE_CORRECTION="true"     # Uncomment the following line to enable command auto-correction.
 # Display red dots whilst waiting for completion.
-[ -z ${COMPLETION_WAITING_DOTS+x} || $SG_OVERRIDE == 'n' ] && COMPLETION_WAITING_DOTS="true"
+(( ! ${+COMPLETION_WAITING_DOTS} )) || [[ "$SG_OVERRIDE" == 'n' ]] && COMPLETION_WAITING_DOTS="true"
 
 # Uncomment the following line to use hyphen-insensitive completion. 
 # Case sensitive completion must be off. _ and - will be interchangeable.
@@ -61,7 +61,7 @@ fi
 # Example format: plugins=(rails git textmate ruby lighthouse)
 # Add wisely, as too many plugins slow down shell startup.
 
-[ -z ${plugins+x} || $SG_OVERRIDE == 'n' ] && plugins=(git command-not-found docker)
+(( ! ${+plugins} )) || [[ "$SG_OVERRIDE" == 'n' ]] && plugins=(git command-not-found docker)
 
 function reload_omz() { source "$ZSH/oh-my-zsh.sh"; }
 reload_omz
