@@ -131,6 +131,14 @@ install_confs() {
     fi
     # For safety, exit on non-zero
     set -e
+    
+    echo "${BLUE}Installing zsh skeleton file into ${CONFIG_DIR}/.zshrc ${RESET}"
+    if [[ $IS_FRESH == "y" ]]; then
+        cp -v "${DIR}/extras/zsh_skel" "${CONFIG_DIR}/.zshrc"
+    else
+        cp -iv "${DIR}/extras/zsh_skel" "${CONFIG_DIR}/.zshrc"
+    fi
+    
     echo "${BLUE}Installing dotfiles...${RESET}"
     # first, see if there are any that will be overwritten and warn against it
     for file in $DIR/dotfiles/*; do
@@ -394,7 +402,7 @@ EOF
         
         msg yellow " >> Installing /etc/zsh/zsh_sg and /etc/skel/.zshrc"
         sudo mkdir /etc/zsh &> /dev/null
-        cp "$DIR/dotfiles/zshrc" /etc/zsh/zsh_sg
+        cp "$DIR/extras/zshrc" /etc/zsh/zsh_sg
         cp "$DIR/extras/zsh_skel" /etc/skel/.zshrc
 
         msg yellow " >> Adding source line to /etc/zsh/zshrc"
