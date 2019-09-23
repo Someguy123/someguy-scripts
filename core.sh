@@ -464,14 +464,15 @@ fresh() {
 update_zshrc() {
     backupdst="${HOME}/.backups/zsh_sg-$(date +%Y-%m-%d)"
     msg bold yellow "Backing up the current zsh_sg into '${backupdst}' ..."
+    msg
     mkdir -p "${HOME}/.backups" &> /dev/null
     cp -vi /etc/zsh/zsh_sg "$backupdst"
+    msg
     msg yellow "Updating your global zshrc at '/etc/zsh/zsh_sg' by replacing it with '$DIR/extras/zshrc'..."
-
+    msg
     sudo cp -v "$DIR/extras/zshrc" /etc/zsh/zsh_sg
-
-    msg bold green "(+) Finished.\n"
-
+    msg
+    msg bold green "(+) Finished."
 }
 
 while true; do
