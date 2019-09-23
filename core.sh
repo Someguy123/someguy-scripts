@@ -242,6 +242,8 @@ install_confs() {
         fi
         
     done
+    msg yellow " >> Installing extra vim files e.g. syntax highlighting (will make backups for overwritten files in ~/.backups/vim)"
+    rsync --backup --suffix="-$(date +%Y-%m-%d)" --backup-dir "$HOME/.backups/vim/" -av "$DIR/extras/vim/" "$HOME/.vim/"
     if [[ -f /etc/zsh_command_not_found ]]; then
         echo "${YELLOW} -> Removing --no-failure-msg from /etc/zsh_command_not_found to prevent a blank message when a command is not found"
         sudo sed -i 's/--no-failure-msg //' /etc/zsh_command_not_found
@@ -382,9 +384,14 @@ install_global() {
         else
             cp() { sudo cp -vi "$@"; }
         fi
+        mkdir -p "$HOME/.backups/vim" &> /dev/null
+
         msg yellow " >> Installing /etc/vim/vimrc.local"
         sudo mkdir /etc/vim &> /dev/null
         cp "$DIR/dotfiles/vimrc" /etc/vim/vimrc.local
+
+        msg yellow " >> Installing extra vim files e.g. syntax highlighting (will make backups for overwritten files in ~/.backups/vim)"
+        sudo rsync --backup --suffix="-$(date +%Y-%m-%d)" --backup-dir "$HOME/.backups/vim/" -av "$DIR/extras/vim/" /etc/vim/
 
         msg yellow " >> Installing /etc/tmux.conf"
         cp "$DIR/dotfiles/tmux.conf" /etc/tmux.conf
@@ -404,6 +411,7 @@ EOF
         sudo mkdir /etc/zsh &> /dev/null
         cp "$DIR/extras/zshrc" /etc/zsh/zsh_sg
         cp "$DIR/extras/zsh_skel" /etc/skel/.zshrc
+
 
         msg yellow " >> Adding source line to /etc/zsh/zshrc"
 
