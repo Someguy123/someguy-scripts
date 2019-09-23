@@ -189,6 +189,19 @@ if [[ "$(uname -s)" == "Linux" && $UID != 0 && $EUID != 0 ]]; then
   alias sysctl='sudo sysctl'
   alias service='sudo service'
   alias journalctl='sudo journalctl'
+  alias lvs='sudo lvs'
+  alias vgs='sudo vgs'
+  alias pvs='sudo pvs'
+  alias lvcreate='sudo lvcreate'
+  alias vgcreate='sudo vgcreate'
+  alias fdisk='sudo fdisk'
+
+  alias iptables='sudo iptables'
+  alias iptables-save='sudo iptables-save'
+  
+  alias ip6tables='sudo ip6tables'
+  alias ip6tables-save='sudo ip6tables-save'
+  
 
   # Basic commands such as `ip addr` and `ip route` shouldn't require sudo
   # Don't use `sudo ip` if there's 0 or only 1 arg, allowing ip to work on accounts with no sudo privilege

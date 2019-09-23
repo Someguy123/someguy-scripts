@@ -461,6 +461,19 @@ fresh() {
     fi
 }
 
+update_zshrc() {
+    backupdst="${HOME}/.backups/zsh_sg-$(date +%Y-%m-%d)"
+    msg bold yellow "Backing up the current zsh_sg into '${backupdst}' ..."
+    mkdir -p "${HOME}/.backups" &> /dev/null
+    cp -vi /etc/zsh/zsh_sg "$backupdst"
+    msg yellow "Updating your global zshrc at '/etc/zsh/zsh_sg' by replacing it with '$DIR/extras/zshrc'..."
+
+    sudo cp -v "$DIR/extras/zshrc" /etc/zsh/zsh_sg
+
+    msg bold green "(+) Finished.\n"
+
+}
+
 while true; do
     echo
     echo "
@@ -474,6 +487,7 @@ controlled by letter choices
     ${GREEN}pk_list${RESET} - List the packages that 'inst' would install
     ${GREEN}conf${RESET} - Install dotfile configs + oh-my-zsh
     ${GREEN}loc${RESET} - Fix locale problems - set locale to en_US.UTF-8 and re-gen locales
+    ${GREEN}zsh${RESET} - Update the global /etc/zsh/zsh_sg with the current version in this repo
     ${GREEN}global${RESET} - Install dotfile configs globally
     ${GREEN}instconf${RESET} - Run inst, then conf after
     ${GREEN}hrd${RESET} - Harden the server (set SSH port, turn off password auth etc.)
@@ -491,6 +505,8 @@ controlled by letter choices
             install_confs;;
         loc )
             fix_locale;;
+        zsh*|update_zsh*)
+            update_zshrc;;
         global )
             install_global;;
         fresh )
