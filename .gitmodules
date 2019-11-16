@@ -1,0 +1,3 @@
+[submodule "shellcore"]
+	path = scripts/shell-core
+	url = https://github.com/Privex/shell-core

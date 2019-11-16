@@ -15,46 +15,64 @@ if which tput >/dev/null 2>&1; then
     ncolors=$(tput colors)
 fi
 
-if [ -t 1 ] && [ -n "$ncolors" ] && [ "$ncolors" -ge 8 ]; then
-    RED="$(tput setaf 1)"
-    GREEN="$(tput setaf 2)"
-    YELLOW="$(tput setaf 3)"
-    BLUE="$(tput setaf 4)"
-    BOLD="$(tput bold)"
-    NORMAL="$(tput sgr0)"
-    RESET="$(tput sgr0)"
+if [ -t 1 ]; then
+    BOLD="$(tput bold)" RED="$(tput setaf 1)" GREEN="$(tput setaf 2)" YELLOW="$(tput setaf 3)" BLUE="$(tput setaf 4)"
+    MAGENTA="$(tput setaf 5)" CYAN="$(tput setaf 6)" WHITE="$(tput setaf 7)" RESET="$(tput sgr0)" NORMAL="$(tput sgr0)"
 else
-    RED=""
-    GREEN=""
-    YELLOW=""
-    BLUE=""
-    BOLD=""
-    NORMAL=""
-    RESET=""
+    BOLD="" RED="" GREEN="" YELLOW="" BLUE=""
+    MAGENTA="" CYAN="" WHITE="" RESET="" NORMAL=""
 fi
 
-# easy coloured messages function
-# written by @someguy123
+
+#####
+# Easy coloured messages function
+# Written by @someguy123
+# Usage:
+#   # Prints "hello" and "world" across two lines in the default terminal color
+#   msg "hello\nworld"
+#
+#   # Prints "    this is an example" in green text
+#   msg green "\tthis" is an example
+#
+#   # Prints "An error has occurred" in bold red text
+#   msg bold red "An error has occurred"
+#
+#####
 function msg () {
-    # usage: msg [color] message
     if [[ "$#" -eq 0 ]]; then echo ""; return; fi;
     if [[ "$#" -eq 1 ]]; then
-        echo "$1"
+        echo -e "$1"
         return
     fi
+    [[ "$1" == "ts" ]] && shift && _msg="[$(date +'%Y-%m-%d %H:%M:%S %Z')] " || _msg=""
     if [[ "$#" -gt 2 ]] && [[ "$1" == "bold" ]]; then
         echo -n "${BOLD}"
         shift
     fi
+    (($#==1)) && _msg+="$@" || _msg+="${@:2}"
+
     case "$1" in
-        bold) echo "${BOLD}${@:2}${RESET}";;
-        [Bb]*) echo "${BLUE}${@:2}${RESET}";;
-        [Yy]*) echo "${YELLOW}${@:2}${RESET}";;
-        [Rr]*) echo "${RED}${@:2}${RESET}";;
-        [Gg]*) echo "${GREEN}${@:2}${RESET}";;
-        * ) echo "${@:2}";;
+        bold) echo -e "${BOLD}${_msg}${RESET}";;
+        BLUE|blue) echo -e "${BLUE}${_msg}${RESET}";;
+        YELLOW|yellow) echo -e "${YELLOW}${_msg}${RESET}";;
+        RED|red) echo -e "${RED}${_msg}${RESET}";;
+        GREEN|green) echo -e "${GREEN}${_msg}${RESET}";;
+        CYAN|cyan) echo -e "${CYAN}${_msg}${RESET}";;
+        MAGENTA|magenta|PURPLE|purple) echo -e "${MAGENTA}${_msg}${RESET}";;
+        * ) echo -e "${_msg}";;
     esac
 }
+
+# Alias for 'msg' function with timestamp on the left.
+function msgts () {
+    msg ts "${@:1}"
+}
+
+function msgerr () {
+    # Same as `msg` but outputs to stderr instead of stdout
+    >&2 msg "$@"
+}
+
 # make msg + colors available to subshells
 # use -f for msg if using bash
 export msg RED GREEN YELLOW BLUE BOLD NORMAL RESET

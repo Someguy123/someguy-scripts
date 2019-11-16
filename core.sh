@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 ################################
 #                              #
 #  Someguy's Linux Provisioner #
@@ -21,469 +21,135 @@
 
 # Detect the PWD of this file, so we can appropriately find 
 # the files needed, regardless of where it was ran from.
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+_CORE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Override where the dotfiles and zsh_files get copied to
-# by using CONFIG_DIR=/where/you/want ./core.sh
-: ${CONFIG_DIR="$HOME"}
+# Load lib.sh which contains all of the functions and some initialisation code
+. "${_CORE_DIR}/lib.sh"
 
-# List of locales to generate, will uncomment all locales starting with the given string
-# e.g. en_GB will cover en_GB.UTF-8 as well as en_GB.ISO-8859-1 etc.
-ENABLE_LOCALES=('en_GB' 'en_US')
+# Remove any lines containing 'source xxxx.sh'
+remove_sources() { sed -E "s/.*source \".*\.sh\".*//g" "$@"; }
 
-. "$DIR/zsh_files/colors.zsh"  # Load terminal colors
-. "$DIR/zsh_files/gnusafe.zsh" # GNU Tools Safety checker
-# make sure we have gnu utilities, otherwise exit
-gnusafe || return 1 2>/dev/null || exit 1
+# Compress instances of more than one blank line into a singular blank line
+# Unlike "tr -s '\n'" this will only compact multiple blank lines into one, instead of
+# removing blank lines entirely.
+compress_newlines() { cat -s; }
 
-OMZSH_INSTALLED="n"
-APT_UPDATED="n"
-# set by 'fresh' function, bypasses overwrite confirmations etc.
-IS_FRESH='n'
+# Remove any comments starting with '#'
+remove_comments() { sed -E "s/^#.*//g" "$@" | sed -E "s/^[[:space:]]+#.*//g"; }
 
-export LANGUAGE=en_US.UTF-8
-export LANG=en_US.UTF-8
-export LC_ALL=en_US.UTF-8
-export LC_CTYPE=en_US.UTF-8
-
-finish() {
-    # start ZSH if it was installed
-    if [[ "$OMZSH_INSTALLED" == "y" && -f "$HOME/.zshrc" ]]; then
-        printf "${GREEN}"
-        echo '         __                                     __   '
-        echo '  ____  / /_     ____ ___  __  __   ____  _____/ /_  '
-        echo ' / __ \/ __ \   / __ `__ \/ / / /  /_  / / ___/ __ \ '
-        echo '/ /_/ / / / /  / / / / / / /_/ /    / /_(__  ) / / / '
-        echo '\____/_/ /_/  /_/ /_/ /_/\__, /    /___/____/_/ /_/  '
-        echo '                        /____/                       ....is now installed!'
-        echo
-        printf "${NORMAL}"
-        env zsh -l
-    fi
-}
-
-trap finish EXIT
-
-pkg_not_found() {
-    # check if a command is available
-    # if not, install it from the package specified
-    # Usage: pkg_not_found [cmd] [apt-package]
-    # e.g. pkg_not_found git git
-    if [[ $# -lt 2 ]]; then
-        echo "${RED}ERR: pkg_not_found requires 2 arguments (cmd) (package)${NORMAL}"
-        exit
-    fi
-    local cmd=$1
-    local pkg=$2
-    if ! [ -x "$(command -v $cmd)" ]; then
-        echo "${YELLOW}WARNING: Command $cmd was not found. installing now...${NORMAL}"
-        if [[ "$APT_UPDATED" == "n" ]]; then
-            sudo apt update
-            APT_UPDATED="y"
-        fi
-        sudo apt install -y "$pkg"
-    fi
-}
-
-######
-# Install oh-my-zsh
-# Some parts borrowed from the official install.sh.
-# Official install.sh not used because it messes with the configs
-# and auto starts zsh in middle of our script
-#####
-install_omz() {
-    # to be able to install oh-my-zsh we need git, curl and zsh
-    pkg_not_found git git
-    pkg_not_found curl curl
-    pkg_not_found zsh zsh
+# Trim away any /usr/bin/* or /bin/* shebangs - either pipe in data, or pass filename as argument
+remove_shebangs() { sed -E "s;^#!/usr/bin.*$;;" "$@" | sed -E "s;^#!/bin.*$;;"; }
 
 
-    # sh -c "$(curl -fsSL https://raw.githubusercontent.com/robbyrussell/oh-my-zsh/master/tools/install.sh)"
-    git clone --depth=1 https://github.com/robbyrussell/oh-my-zsh.git "$HOME/.oh-my-zsh"
-    # If this user's login shell is not already "zsh", attempt to switch.
-    TEST_CURRENT_SHELL=$(expr "$SHELL" : '.*/\(.*\)')
-    if [ "$TEST_CURRENT_SHELL" != "zsh" ]; then
-        if ! [ -x "$(command -v zsh)" ]; then
-            echo "${RED}ERROR: zsh not found. not changing default shell.${NORMAL}"
-            return 1
-        fi
-        # If this platform provides a "chsh" command (not Cygwin), do it, man!
-        if hash chsh >/dev/null 2>&1; then
-            printf "${BLUE}Time to change your default shell to zsh!${NORMAL}\n"
-            sudo chsh -s $(grep /zsh$ /etc/shells | tail -1) $(whoami)
-        # Else, suggest the user do so manually.
-        else
-            printf "I can't change your shell automatically because this system does not have chsh.\n"
-            printf "${BLUE}Please manually change your default shell to zsh!${NORMAL}\n"
-        fi
-    fi
-    OMZSH_INSTALLED="y"
-}
 
-######
-# Install config files
-#####
-install_confs() {
-    if [ ! -d "$HOME/.oh-my-zsh" ]; then
-        echo "Looks like oh-my-zsh isn't installed..."
-        echo "Will now install it"
-        install_omz
-    fi
-    # For safety, exit on non-zero
-    set -e
-    
-    echo "${BLUE}Installing zsh skeleton file into ${CONFIG_DIR}/.zshrc ${RESET}"
-    if [[ $IS_FRESH == "y" ]]; then
-        cp -v "${DIR}/extras/zsh_skel" "${CONFIG_DIR}/.zshrc"
-    else
-        cp -iv "${DIR}/extras/zsh_skel" "${CONFIG_DIR}/.zshrc"
-    fi
-    
-    echo "${BLUE}Installing dotfiles...${RESET}"
-    # first, see if there are any that will be overwritten and warn against it
-    for file in $DIR/dotfiles/*; do
-        [ -e "$file" ] || continue # protect against failed match returning glob
-        # remove the path to the file so we can add a dot to the start
-        filename=$(basename -- "$file")
-        dotf=".$filename"
-        f_install_loc="$CONFIG_DIR/$dotf"
-        # if the file already exists, ask user if we should overwrite
-        if [[ -f "$f_install_loc" && $IS_FRESH == "n" ]]; then
-            while true; do
-                echo "${YELLOW}WARNING: The file $f_install_loc already exists...${RESET}"
-                backupdir=$(dirname "$f_install_loc")
-                origname=$(basename "$f_install_loc")
-                backupname="backup-$(date +%Y-%m-%d).${origname}"
-                backuppath="${backupdir}/${backupname}"
-                echo "${YELLOW}Do you want to replace this file? (we'll back it up to '${backuppath}')${RESET}"
-                read -p " (y)es/(n)o/(v)iew existing > " yn
-                case $yn in
-                    [Yy]* )
-                        echo "${YELLOW} -> Backing up $f_install_loc to $backuppath ${RESET}"
-                        mv -v "$f_install_loc" "$backuppath"
-                        if [[ -f "$f_install_loc" ]]; then
-                            echo "${RED}${BOLD}ERROR: Something must've went wrong renaming this file, as $f_install_loc still exists${RESET}"
-                            echo "${RED}For your safety, we'll just skip this file.${RESET}"
-                            continue
-                        else
-                            echo "Copying from $file to $f_install_loc";
-                            cp -v "$file" "$f_install_loc"
-                        fi
-                        break;;
-                    [Vv]* ) cat "$f_install_loc";;
-                    [Nn]* )
-                        break;;
-                    * ) echo "${RED} !! Please answer yes (y), view existing (v) or no (n).${RESET}";;
-                esac
-            done
+############
+# By default, _sgs_compile includes both the compiled version of Privex ShellCore,
+# plus scripts/base.sh
+# Anything else you want to include, should be specified on the command line.
+# 
+# Usage:
+#
+#    # Compile ShellCore, scripts/base.sh, scripts/my_helpers.sh, and scripts/lite.sh
+#    # then output the compiled script to stdout.
+#    $ _sgs_compile scripts/my_helpers.sh scripts/lite.sh
+#
+#    # By specifying 'output' before a file path, the function will output the compiled
+#    # script to dist/lite.sh instead of stdout.
+#    $ _sgs_compile scripts/lite.sh output dist/lite.sh
+#
+_sgs_compile() {
+    local _PWD="$PWD"
+    _CORE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+    # msgerr "Unsetting variables..."
+    unset SRCED_COLORS &>/dev/null || true
+    unset SRCED_IDENT_SH &>/dev/null || true
+    unset SRCED_010HLP &>/dev/null || true
+    export SG_DIR="${_CORE_DIR}/scripts/shell-core"
+    local use_file=0 out_file has_midfiles=0 midfiles=()
+
+    # msgerr "Parsing arguments..."
+    while (($#>0)); do
+        if [[ "$1" == "output" ]]; then
+            shift
+            use_file=1 && out_file="$1"
+            msgerr green " [+] Outputting compiled file to '$out_file'"
+            shift
             continue
-        else
-            # the file doesn't exist, so it should be safe to copy to
-            # for safety, use cp -i, just incase something is wrong with the overwrite check above
-            if [[ $IS_FRESH == "y" ]]; then
-                cp() { env cp -v "$@"; }
-            else
-                cp() { env cp -vi "$@"; }
+        fi
+        msgerr green " [+] Adding file '$1' to middle files for compilation"
+        midfiles+=("$1")
+        has_midfiles=1
+        shift
+    done
+    # msgerr "Making temp file..."
+
+    (($use_file==1)) || out_file="$(mktemp)"
+
+    local _out_dir=$(dirname $out_file)
+    [[ "$_out_dir" == '.' ]] && out_file="${_PWD}/${out_file}" || { 
+        [[ ! -d "$_out_dir" ]] && out_file="${_PWD}/${out_file}" && >&2 mkdir -pv "$(dirname "${_PWD}/${out_file}")"
+    }
+
+    : ${SHEBANG_LINE='#!/usr/bin/env bash'}
+
+    # msgerr "Making copyright..."
+
+    __CMP_NOW=$(date)        
+    local _ver="$SG_SCRIPTS_VERSION"
+    _sgs_copyright="############################################################
+###                                                      ###
+###   Someguy Scripts - (C) 2019 github.com/Someguy123   ###
+###   Released as open source under the GNU AGPL v3      ###
+###                  Someguy Scripts Version: $_ver      ###
+###                                                      ###
+###       github.com/Someguy123/someguy-scripts          ###
+###                                                      ###
+### This minified script was compiled at:                ###
+### $__CMP_NOW                         ###
+###                                                      ###
+############################################################
+"
+
+    # msgerr "Entering folder: $SG_DIR"
+
+    cd "$SG_DIR"
+
+    {
+        msg "$SHEBANG_LINE"
+        echo -n "$_sgs_copyright"
+        # msgerr "Compiling ShellCore..."
+        # Trim away any /usr/bin/* or /bin/* shebangs from the ShellCore compilation
+        ./run.sh compile | remove_shebangs | compress_newlines
+        # msgerr "Compiled."
+        msg "$_sgs_copyright"
+        msg "\n### --------------------------------------"
+        msg "### Someguy123/someguy-scripts/scripts/base.sh"
+        msg "### --------------------------------------"
+        # msgerr "Cleaning ${_CORE_DIR}/scripts/base.sh"
+        cat "${_CORE_DIR}/scripts/base.sh" | remove_sources | remove_comments | tr -s '\n\n'
+        for f in "${midfiles[@]}"; do
+            # If a passed file path doesn't exist, check if it exists in the same folder as core.sh
+            # or inside of the scripts folder.
+            [[ ! -f "$f" ]] && [[ -f "${_CORE_DIR}/${f}" ]] && f="${_CORE_DIR}/${f}"
+            [[ ! -f "$f" ]] && [[ -f "${_CORE_DIR}/scripts/${f}" ]] && f="${_CORE_DIR}/scripts/${f}"
+            rel_f=""
+            if grep -q "${_CORE_DIR}" <<< "$f"; then
+                rel_f=$(sed -E "s#${_CORE_DIR}/?##" <<< "$f")
             fi
-            cp "$file" "$f_install_loc"
-            unset -f cp
-        fi
-    done
-    echo "${BLUE}Installing zsh_files...${RESET}"
-    for file in $DIR/zsh_files/*; do
-        [ -e "$file" ] || continue # protect against failed match returning glob
-
-        # remove the path to the file so we can add a dot to the start
-        filename=$(basename -- "$file")
-        f_install_loc="$CONFIG_DIR/.zsh_files/$filename"
-        if ! [[ -d "$CONFIG_DIR/.zsh_files" ]]; then
-            mkdir -p "$CONFIG_DIR/.zsh_files"
-        fi
-        # if the file already exists, ask user if we should overwrite
-        if [[ -f "$f_install_loc" && $IS_FRESH == "n" ]]; then
-            while true; do
-                echo "${YELLOW}WARNING: The file $f_install_loc already exists...${RESET}"
-                backupdir=$(dirname "$f_install_loc")
-                origname=$(basename "$f_install_loc")
-                backupname="backup-$(date +%Y-%m-%d).${origname}"
-                backuppath="${backupdir}/${backupname}"
-                echo "${YELLOW}Do you want to replace this file? (we'll back it up to '${backuppath}')${RESET}"
-                read -p " (y)es/(n)o/(v)iew existing > " yn
-                case $yn in
-                    [Yy]* )
-                        echo "${YELLOW} -> Backing up $f_install_loc to $backuppath ${RESET}"
-                        mv -v "$f_install_loc" "$backuppath"
-                        if [[ -f "$f_install_loc" ]]; then
-                            echo "${RED}${BOLD}ERROR: Something must've went wrong renaming this file, as $f_install_loc still exists${RESET}"
-                            echo "${RED}For your safety, we'll just skip this file.${RESET}"
-                            continue
-                        else
-                            echo "Copying from $file to $f_install_loc";
-                            cp -v "$file" "$f_install_loc"
-                        fi
-                        break;;
-                    [Vv]* ) cat "$f_install_loc";;
-                    [Nn]* )
-                        break;;
-                    * ) echo "${RED} !! Please answer yes (y), view existing (v) or no (n).${RESET}";;
-                esac
-            done
-            continue
-        else
-            # the file doesn't exist, so it should be safe to copy to
-            # for safety, use cp -i, just incase something is wrong with the overwrite check above
-            if [[ $IS_FRESH == "y" ]]; then
-                cp() { env cp -v "$@"; }
-            else
-                cp() { env cp -vi "$@"; }
-            fi
-            cp "$file" "$f_install_loc"
-            unset -f cp
-        fi
-        
-    done
-    msg yellow " >> Installing extra vim files e.g. syntax highlighting (will make backups for overwritten files in ~/.backups/vim)"
-    rsync --backup --suffix="-$(date +%Y-%m-%d)" --backup-dir "$HOME/.backups/vim/" -av "$DIR/extras/vim/" "$HOME/.vim/"
-    if [[ -f /etc/zsh_command_not_found ]]; then
-        echo "${YELLOW} -> Removing --no-failure-msg from /etc/zsh_command_not_found to prevent a blank message when a command is not found"
-        sudo sed -i 's/--no-failure-msg //' /etc/zsh_command_not_found
-    else
-        echo "${YELLOW} !! Warning !! /etc/zsh_command_not_found was not found. You may want to edit it manually after zsh is launched."
-        echo "           You should remove '--no-failure-msg' otherwise you will get a blank message when a command is not found${RESET}"
-    fi
-    echo "${GREEN}All config files installed.${RESET}"
-    # Remove exit on error
-    set +e
-}
-
-harden() {
-    echo "${BLUE}Current SSH port:${RESET}"
-    grep -E "Port [0-9]+" /etc/ssh/sshd_config
-    read -p "${BLUE}Do you want to randomize the SSH port? (y/n)${RESET} > " chport
-    if [[ "$chport" == "y" ]]; then
-        export SSH_PORT=$(( ( RANDOM % 16383 )  + 49152 )) # random port for ssh
-        sudo sed -i "/Port 22/c\Port ${SSH_PORT}" /etc/ssh/sshd_config
-        echo SSH PORT: $SSH_PORT
-    fi
-    read -p "${BLUE}Do you want to turn off password auth? (y/n)${RESET} > " nopass
-    if [[ "$nopass" == "y" ]]; then
-        sudo sed -i "/PasswordAuthentication yes/c\PasswordAuthentication no" /etc/ssh/sshd_config
-        echo "${YELLOW}Password authentication disabled. Please make sure you have a key in ~/.ssh/authorized_keys${RESET}"
-    fi
-    echo "Here are your currently installed SSH keys:"
-    echo "=============================="
-    echo "${BLUE}${BOLD} $HOME/.ssh/authorized_keys:${RESET}"
-    cat ~/.ssh/authorized_keys
-    echo "${BLUE}${BOLD} /root/.ssh/authorized_keys:${RESET}"
-    sudo cat /root/.ssh/authorized_keys
-    read -p "${BLUE}Do you want to restart SSH? (y/n)${RESET} > " rstssh
-    if [[ "$rstssh" == "y" ]]; then
-        echo "${YELLOW}Restarting SSH...${RESET}"
-        sudo systemctl restart ssh
-        echo "${GREEN}Done! Please make sure you can log in on port ${SSH_PORT} ${RESET}"
-    fi
-
-}
-
-# If INSTALL_PKGS is set from the environment, we should use that.
-# If not, use our defaults.
-if [ -z ${INSTALL_PKGS+x} ]; then 
-    INSTALL_PKGS=(
-        # General
-        git curl wget
-        # Session management
-        tmux screen
-        # Security
-        iptables-persistent fail2ban
-        # Network tools
-        mtr-tiny iputils-ping nmap netcat dnsutils
-        # Development
-        build-essential vim nano zsh
-        # Server debugging/stats
-        htop sysstat # sysstat = iotop
-        # Compression/Decompression
-        liblz4-tool # lz4 for fast compress/decompress
-        zip unzip xz-utils
-        # Python3 for various things
-        python3 python3-pip python3-venv
-        # Command-not-found, to tell you where to find a command in apt
-        command-not-found
-    )
-else 
-    echo "${YELLOW}It looks like you've set INSTALL_PKGS in your environment."
-    echo "We'll use the packages in there for our install_essential${RESET}"
-    sleep 3
-fi
-
-install_essential() {
-    echo "${BLUE}Installing various packages...${RESET}"
-    if [[ "$APT_UPDATED" == "n" ]]; then
-        sudo apt update
-        APT_UPDATED="y"
-    fi
-    # convert the array of packages into a flat string
-    # so they can be passed as arguments to apt
-    local pk_list=""
-    local pipinst="n"
-    for pk in "${INSTALL_PKGS[@]}"; do 
-        if [[ "$pk" == "python3-pip" ]]; then
-            pipinst="y"
-        fi
-        pk_list+=" $pk"; 
-    done
-    sudo apt install -y $pk_list
-    # Only upgrade pip if we know it was installed
-    if [[ "$pipinst" == "y" ]]; then
-        # Upgrade pip
-        echo "${BLUE}Upgrading Python3 pip${RESET}"
-        sudo -H pip3 install -U pip
-    fi
-}
-
-fix_locale() {
-    echo "${RED}This tool will remove /etc/default/locale, re-generate it with en_US.UTF-8, then generate the locale.${RESET}"
-    [[ "$IS_FRESH" == "n" ]] && read -p "${YELLOW}Do you want to continue? (y/n)${RESET} > " fxloc
-    if [[ "$fxloc" == "y" || $IS_FRESH == "y" ]]; then
-        echo "${YELLOW} >> Making sure the 'locales' package is installed...${RESET}"
-        apt install -qy locales >/dev/null
-        echo "${YELLOW} >> Removing /etc/default/locale${RESET}"
-        sudo rm /etc/default/locale
-        echo "${YELLOW} >> Generating /etc/default/locale${RESET}"
-        cat << EOF | sudo tee /etc/default/locale
-LANGUAGE=en_US.UTF-8
-LANG=en_US.UTF-8
-LC_ALL=en_US.UTF-8
-LC_CTYPE=en_US.UTF-8
-EOF
-        
-        echo "${YELLOW} >> Enabling locales in /etc/locale.gen specified in ENABLE_LOCALES  ${RESET}"
-        for l in "${ENABLE_LOCALES[@]}"; do
-            echo "${YELLOW} ... Uncommenting locales starting with $l ${RESET}"
-            sudo sed -i "/^#.* ${l}.*/s/^# //g" /etc/locale.gen
+            msg "\n### --------------------------------------"
+            [[ "$rel_f" == "" ]] && msg "### $f" || msg "### Someguy123/someguy-scripts/${rel_f}"
+            # msg "### Someguy123/someguy-scripts/scripts/base.sh"
+            msg "### --------------------------------------"
+            cat "$f" | remove_sources | remove_comments | tr -s '\n'
         done
-        echo "${YELLOW} >> Re-generating locale files ${RESET}"
-        sudo locale-gen
-        echo "${GREEN}${BOLD}Finished. Your locale should be corrected now.${RESET}"
-        echo "You may wish to restart your shell, or set the below variables in your existing session:"
-        cat /etc/default/locale
-    else
-        echo "${YELLOW} !! Cancelled.${RESET}"
-    fi
+    } > "$out_file"
+
+    (($use_file==1)) && msg green " -> Compiled someguy-scripts into file '$out_file'" || \
+        { cat "$out_file"; rm -f "$out_file"; }
 }
 
-install_global() {
-    local instovr="n" instglob="n" owgit='y'
-    msg red "This tool will install various dotfile configs globally, so they are used by default for all users."
-    echo "Warnings will be given before overwriting the file."
-    [[ $IS_FRESH == "n" ]] && read -p "${YELLOW}Do you want to continue? (y/N)${RESET} > " instglob
-    if [[ "$instglob" == "y" || $IS_FRESH == "y" ]]; then
-        [[ $IS_FRESH == "n" ]] && read -p "${YELLOW}Skip all warnings and overwrite WITHOUT asking? (y/N)${RESET} > " instovr
-        [[ "$instovr" == "y" ]] && IS_FRESH='y'
-        if [[ $IS_FRESH == "y" ]]; then
-            cp() { sudo cp -v "$@"; }
-        else
-            cp() { sudo cp -vi "$@"; }
-        fi
-        mkdir -p "$HOME/.backups/vim" &> /dev/null
-
-        msg yellow " >> Installing /etc/vim/vimrc.local"
-        sudo mkdir /etc/vim &> /dev/null
-        cp "$DIR/dotfiles/vimrc" /etc/vim/vimrc.local
-
-        msg yellow " >> Installing extra vim files e.g. syntax highlighting (will make backups for overwritten files in ~/.backups/vim)"
-        sudo rsync --backup --suffix="-$(date +%Y-%m-%d)" --backup-dir "$HOME/.backups/vim/" -av "$DIR/extras/vim/" /etc/vim/
-
-        msg yellow " >> Installing /etc/tmux.conf"
-        cp "$DIR/dotfiles/tmux.conf" /etc/tmux.conf
-
-        if [[ -f /etc/gitconfig && $IS_FRESH == "n" ]]; then
-            owgit='n'
-            read -p "${YELLOW}/etc/gitconfig already exists... overwrite? (y/n)${RESET} > " owgit
-        fi
-        [[ "$owgit" == "y" ]] && cat << EOF | sudo tee /etc/gitconfig >/dev/null
-[core]
-	excludesfile = /etc/gitignore
-EOF
-        msg yellow " >> Installing /etc/gitignore"
-        cp "$DIR/dotfiles/gitignore" /etc/gitignore
-        
-        msg yellow " >> Installing /etc/zsh/zsh_sg and /etc/skel/.zshrc"
-        sudo mkdir /etc/zsh &> /dev/null
-        cp "$DIR/extras/zshrc" /etc/zsh/zsh_sg
-        cp "$DIR/extras/zsh_skel" /etc/skel/.zshrc
-
-
-        msg yellow " >> Adding source line to /etc/zsh/zshrc"
-
-        if grep -q "source /etc/zsh/zsh_sg" /etc/zsh/zshrc; then
-            msg yellow " ... Skipping adding source line to /etc/zsh/zshrc as it's already there"
-        else
-            cat << "EOF" | sudo tee -a /etc/zsh/zshrc >/dev/null
-# Load zshrc from @someguy123/someguy-scripts only if user has no .zshrc
-if [[ ! -f "$HOME/.zshrc" ]]; then
-    source /etc/zsh/zsh_sg
-fi
-EOF
-        fi
-
-        msg yellow " >> Installing folder /etc/zsh_files/"
-        sudo mkdir /etc/zsh_files &> /dev/null
-        cp -r "$DIR/zsh_files/"* /etc/zsh_files/
-        
-        if [[ -d "/etc/oh-my-zsh" ]]; then
-            msg yellow " ... Skipping oh-my-zsh clone as /etc/oh-my-zsh already exists"
-        else
-            msg yellow " >> Cloning oh-my-zsh into /etc/oh-my-zsh/"
-            sudo git clone --depth=1 https://github.com/robbyrussell/oh-my-zsh.git /etc/oh-my-zsh
-        fi
-        
-        msg bold green "Finished. The configs should now work for all users"
-        msg red "NOTE: If a user has a .zshrc, the global zshrc should be ignored."
-        msg red "      If it isn't, disable the global zshrc for a user by putting 'unset GLOBAL_RCS' into \$HOME/.zshenv"
-    else
-        msg bold yellow " !! Cancelled."
-    fi
-    [[ "$instovr" == "y" ]] && IS_FRESH='n'
-}
-
-fresh() {
-    echo "${BLUE}Fresh install helper${RESET}"
-    echo "${BOLD}${RED}WARNING! Various warnings such as overwrite confirmations will be disabled${RESET}"
-    echo "This option will:
-    - Fix locale problems (set the system locale to en_US.UTF-8)
-    - Install useful packages
-    - Install dotfiles / oh-my-zsh, while automatically overwriting on conflict
-    - Install dotfiles / oh-my-zsh globally, again skipping conflict warnings
-    - Harden the server (this will still confirm port change + ssh keys for safety)
-    "
-    read -p "${YELLOW}Do you want to continue? (y/n)${RESET} > " should_fresh
-    if [[ "$should_fresh" == "y" ]]; then
-        IS_FRESH="y"
-        fix_locale
-        install_essential
-        install_confs
-        install_global
-        harden
-    else
-        echo "${YELLOW} !! Cancelled.${RESET}"
-    fi
-}
-
-update_zshrc() {
-    backupdst="${HOME}/.backups/zsh_sg-$(date +%Y-%m-%d)"
-    msg bold yellow "Backing up the current zsh_sg into '${backupdst}' ..."
-    msg
-    mkdir -p "${HOME}/.backups" &> /dev/null
-    cp -vi /etc/zsh/zsh_sg "$backupdst"
-    msg
-    msg yellow "Updating your global zshrc at '/etc/zsh/zsh_sg' by replacing it with '$DIR/extras/zshrc'..."
-    msg
-    sudo cp -v "$DIR/extras/zshrc" /etc/zsh/zsh_sg
-    msg
-    msg bold green "(+) Finished."
-}
-
-while true; do
+_sgs_help() {
     echo
     echo "
 ===============================
@@ -503,14 +169,16 @@ controlled by letter choices
     ${GREEN}fresh${RESET} - For fresh installs. Fix locale, install packages, configs, global configs, and harden
     ${GREEN}q${RESET} - Exit
 "
-    read -p "Menu > " menu_choice
-    case $menu_choice in
-        inst )
-            install_essential;;
-        conf )
-            install_confs;;
-        instconf )
+}
+
+handle_menu() {
+    case $1 in
+        instconf*|installconf* )
             install_essential
+            install_confs;;
+        inst* )
+            install_essential;;
+        conf* )
             install_confs;;
         loc )
             fix_locale;;
@@ -520,16 +188,31 @@ controlled by letter choices
             install_global;;
         fresh )
             fresh;;
-        hrd )
+        hrd|hard* )
             harden;;
-        pk_list )
-            echo "${GREEN}Packages that would be installed:${RESET}"
+        pk_list|pkg* )
+            msg green "Packages that would be installed:"
             for pk in "${INSTALL_PKGS[@]}"; do
-                echo " - $pk"
+                msg cyan " - ${BOLD}${pk}"
             done
             echo;;
-        [Qq] )
+        compi*)
+            _sgs_compile "${@:2}";;
+        [Qq]|exit|quit )
             exit;;
-        * ) echo "${RED}Invalid menu option.${RESET}";;
+        hel*)
+            _sgs_help;;
+        * ) msg red "Invalid menu option. Try './core.sh help' or typing 'help' at the menu.";;
     esac
+}
+
+if (($#>0)); then
+    handle_menu "$@"
+    exit
+fi
+
+while true; do
+    _sgs_help
+    read -p "Menu > " menu_choice
+    handle_menu "$menu_choice"
 done

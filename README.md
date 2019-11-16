@@ -50,10 +50,61 @@ you can verify it's not going to harm your systems.
 **Run in docker:**
 
 ```
-git clone https://github.com/someguy123/someguy-scripts
+git clone --recurse-submodules https://github.com/Someguy123/someguy-scripts.git
 cd someguy-scripts
 docker build -t sgscripts .
 docker run -it sgscripts
+```
+
+# Auto-install scripts / compiling Someguy-Scripts into a singular file
+
+To allow for automated installation of Someguy-Scripts, there are two auto-install scripts available:
+
+  - `scripts/lite.sh` - Lightweight install - Avoids packages with a lot of dependencies for a fast install
+  - `scripts/full.sh` - Equivelent to running `./core.sh` and typing `fresh` but without any need for user interaction
+
+Furthermore, Someguy-Scripts includes a compilation feature, allowing you to compact 
+[Privex ShellCore](https://github.com/Privex/shell-core), `scripts/base.sh`, and any other scripts of your choice 
+e.g. `scripts/lite.sh` into a single shell script.
+
+Note that `compile` by default will include both [ShellCore](https://github.com/Privex/shell-core) and `scripts/base.sh`.
+You may specify multiple bash scripts that you'd like to compile, and they will be cleaned and appended to the compiled
+output in the order that you specify them.
+
+```bash
+git clone --recurse-submodules https://github.com/Someguy123/someguy-scripts.git
+cd someguy-scripts
+# Compile Privex ShellCore, scripts/base.sh, and scripts/lite.sh together (strips comments, source lines, excess whitespace)
+# then outputs the compiled script into dist/lite.sh
+./core.sh compile scripts/lite.sh output "${PWD}/dist/lite.sh"
+
+# If you do not provide the arguments 'output xxx.sh', then the compiled script will be printed to stdout.
+# You can redirect the outputted script just like normal. 
+# Any printed informational messages should be printed to stderr to avoid interfering with the compiled script.
+./core.sh compile scripts/full.sh > compiled_full.sh
+```
+
+The pre-compiled standalone lite.sh and full.sh are available on Privex's CDN. You may either
+download and pipe the script directly into bash, or you can download the script, mark it executable,
+and then run it as normal.
+
+
+**Standalone lite.sh (Lightweight Auto-Install)**
+
+```bash
+# With curl
+curl -fsS https://cdn.privex.io/github/someguy-scripts/dist/lite.sh | bash
+# With wget
+wget -q https://cdn.privex.io/github/someguy-scripts/dist/lite.sh -O - | bash
+```
+
+**Standalone full.sh (Lightweight Auto-Install)**
+
+```bash
+# With curl
+curl -fsS https://cdn.privex.io/github/someguy-scripts/dist/full.sh | bash
+# With wget
+wget -q https://cdn.privex.io/github/someguy-scripts/dist/full.sh -O - | bash
 ```
 
 # Various shell functions and aliases (zsh_files + dotfiles/zshrc)
