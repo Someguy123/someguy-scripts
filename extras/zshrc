@@ -182,29 +182,67 @@ fi
 
 export EDITOR='vim'
 
+# For convenience, when non-privileged users run 'su' or 'su -', convert it
+# into 'sudo su -'. If the user is root, always run su normally.
+su() {
+    # For root, always run su normally
+    if (( EUID == 0 )); then
+        env su "$@"; return $?
+    fi
+    # If user runs 'su' or 'su -' convert it into 'sudo su -'
+    if (( $# == 0 )); then 
+        sudo su -; return $?
+    elif (( $# == 1 )) && [[ "$1" == "-" ]]; then
+        sudo su -; return $?
+    else # If the command isn't 'su' or 'su -', then run su normally
+        env su "$@"; return $?
+    fi
+}
+
 # for Linux servers, if running as a normal user, alias important commands to use sudo
 if [[ "$(uname -s)" == "Linux" && $UID != 0 && $EUID != 0 ]]; then
-  alias su='sudo su -'
+  # Sudo aliases for apt package manager
   alias apt='sudo apt'
+  alias dpkg='sudo dpkg'
   alias apt-get='sudo apt-get'
+  alias apt-add-repository='sudo apt-add-repository'
+  alias apt-cache='sudo apt-cache'
+
+  # Sudo aliases for services / systemd
   alias systemctl='sudo systemctl'
   alias sysctl='sudo sysctl'
   alias service='sudo service'
   alias journalctl='sudo journalctl'
+
+  # Sudo aliases for LVM
   alias lvs='sudo lvs'
+  alias lvdisplay='sudo lvdisplay'
   alias vgs='sudo vgs'
   alias pvs='sudo pvs'
+
+  alias lvchange='sudo lvchange'
+  alias lvconvert='sudo lvconvert'
   alias lvcreate='sudo lvcreate'
+  alias lvextend='sudo lvextend'
+  alias lvresize='sudo lvresize'
+  alias lvreduce='sudo lvreduce'
+  alias lvrename='sudo lvrename'
+  alias lvscan='sudo lvscan'
+  alias vgscan='sudo vgscan'
   alias vgcreate='sudo vgcreate'
+  alias pvscan='sudo pvscan'
+
+  # Sudo aliases for disk management
   alias fdisk='sudo fdisk'
+  alias parted='sudo parted'
 
   alias iptables='sudo iptables'
   alias iptables-save='sudo iptables-save'
   
+  # Sudo aliases for networking
   alias ip6tables='sudo ip6tables'
   alias ip6tables-save='sudo ip6tables-save'
   
-
   # Basic commands such as `ip addr` and `ip route` shouldn't require sudo
   # Don't use `sudo ip` if there's 0 or only 1 arg, allowing ip to work on accounts with no sudo privilege
   function ip() {
