@@ -82,7 +82,7 @@ if [ -z ${INSTALL_PKGS+x} ]; then
         # Network tools
         mtr-tiny iputils-ping netcat dnsutils
         # Development
-        vim-tiny nano-tiny zsh
+        vim nano zsh
         # Server stats
         htop
         # Compression/Decompression
