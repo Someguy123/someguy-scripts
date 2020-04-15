@@ -158,16 +158,17 @@ _sgs_help() {
 ===============================
 To avoid mistakes, the menu is 
 controlled by letter choices
-    ${GREEN}inst${RESET} - Install various useful packages
-    ${GREEN}pk_list${RESET} - List the packages that 'inst' would install
-    ${GREEN}conf${RESET} - Install dotfile configs + oh-my-zsh
-    ${GREEN}loc${RESET} - Fix locale problems - set locale to en_US.UTF-8 and re-gen locales
-    ${GREEN}zsh${RESET} - Update the global /etc/zsh/zsh_sg with the current version in this repo
-    ${GREEN}global${RESET} - Install dotfile configs globally
-    ${GREEN}instconf${RESET} - Run inst, then conf after
-    ${GREEN}hrd${RESET} - Harden the server (set SSH port, turn off password auth etc.)
-    ${GREEN}fresh${RESET} - For fresh installs. Fix locale, install packages, configs, global configs, and harden
-    ${GREEN}q${RESET} - Exit
+    ${GREEN}inst${RESET}        - Install various useful packages
+    ${GREEN}pk_list${RESET}     - List the packages that 'inst' would install
+    ${GREEN}conf${RESET}        - Install dotfile configs + oh-my-zsh
+    ${GREEN}loc${RESET}         - Fix locale problems - set locale to en_US.UTF-8 and re-gen locales
+    ${GREEN}zsh${RESET}         - Update the global /etc/zsh/zsh_sg with the current version in this repo
+    ${GREEN}zfiles${RESET}      - Update either global /etc/zsh_files (if ran as root), or local ~/.zsh_files (if ran as user)
+    ${GREEN}global${RESET}      - Install dotfile configs globally
+    ${GREEN}instconf${RESET}    - Run inst, then conf after
+    ${GREEN}hrd${RESET}         - Harden the server (set SSH port, turn off password auth etc.)
+    ${GREEN}fresh${RESET}       - For fresh installs. Fix locale, install packages, configs, global configs, and harden
+    ${GREEN}q${RESET}           - Exit
 "
 }
 
@@ -182,6 +183,8 @@ handle_menu() {
             install_confs;;
         loc )
             fix_locale;;
+        zfile*)
+            update_zshfiles;;
         zsh*|update_zsh*)
             update_zshrc;;
         global )

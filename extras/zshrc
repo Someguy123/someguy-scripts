@@ -80,6 +80,7 @@ LINE="============================================"
 
 if ! [ -z ${ZSHFILES_DIR+x} ]; then 
   # load script helpers
+  source "$ZSHFILES_DIR/common.zsh"      # Various random helper functions
   source "$ZSHFILES_DIR/colors.zsh"      # Terminal colours such as $RED, $YELLOW etc.
   source "$ZSHFILES_DIR/gnusafe.zsh"     # GNU Utility sanity checker
   source "$ZSHFILES_DIR/ssh.zsh"         # Helpers such as await-ssh, ssh-reset
@@ -87,6 +88,10 @@ if ! [ -z ${ZSHFILES_DIR+x} ]; then
   source "$ZSHFILES_DIR/steem.zsh"       # Steem RPC related e.g. rpc_rq, rpc_get_time
   if [[ "$(uname -s)" == "Darwin" ]]; then
       source "$ZSHFILES_DIR/osx.zsh"     # OSX specific functions
+  fi
+  # Linux specific functions
+  if [[ "$(uname -s)" == "Linux" ]]; then
+      source "$ZSHFILES_DIR/lvsnapshot.zsh"     
   fi
   source "$ZSHFILES_DIR/zshreload.zsh"   # ZSH Hook to recommend reloading after editing zshrc
 else

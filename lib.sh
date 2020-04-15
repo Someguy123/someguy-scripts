@@ -600,3 +600,18 @@ update_zshrc() {
     msg bold green "(+) Finished."
 }
 
+update_zshfiles() {
+    local backup_dir="$HOME/.backups/etc/zsh_files/" out_dir="/etc/zsh_files/"
+    if (( EUID != 0 )); then
+        msg yellow " >> Detected non-root user. Updating local zsh_files instead of global zsh_files."
+        msg yellow " >> If you want to update global zsh_files, run core.sh as root\n"
+        sleep 2
+        backup_dir="${HOME}/.backups/zsh_files/" out_dir="${HOME}/.zsh_files/"
+    fi
+
+    msg yellow " >> Updating folder $out_dir (replaced files will be backed up in ${backup_dir} before copying)"
+    [[ ! -d "$out_dir" ]] && mkdir -v "$out_dir" || true
+    rsync -avh --backup --suffix="-$(date +%Y-%m-%d)" --backup-dir "$backup_dir" --progress "$LIB_DIR/zsh_files/" "$out_dir"
+    msg
+    msg bold green "(+) Finished."
+}
