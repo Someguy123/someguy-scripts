@@ -611,6 +611,7 @@ update_zshfiles() {
 
     msg yellow " >> Updating folder $out_dir (replaced files will be backed up in ${backup_dir} before copying)"
     [[ ! -d "$out_dir" ]] && mkdir -v "$out_dir" || true
+    [[ ! -d "$backup_dir" ]] && mkdir -pv "$backup_dir" || true
     rsync -avh --backup --suffix="-$(date +%Y-%m-%d)" --backup-dir "$backup_dir" --progress "$LIB_DIR/zsh_files/" "$out_dir"
     msg
     msg bold green "(+) Finished."
