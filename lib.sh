@@ -511,6 +511,7 @@ install_global() {
 
         msg yellow " >> Installing /etc/tmux.conf"
         cp "$LIB_DIR/dotfiles/tmux.conf" /etc/tmux.conf
+        cp "$LIB_DIR/dotfiles/tmux.conf.modern" /etc/tmux.conf.modern
 
         if [[ -f /etc/gitconfig && $IS_FRESH == "n" ]]; then
             owgit='n'

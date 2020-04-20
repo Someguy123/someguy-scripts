@@ -1,0 +1,59 @@
+########################
+# This is the same as tmux.conf - but modified for compatibility with newer tmux versions
+# such as tmux 3.0
+########################
+
+# Reload configuration with r key
+bind-key r source-file $HOME/.tmux.conf
+bind-key R source-file /etc/tmux.conf
+
+# Split window with | or -
+unbind-key %
+bind-key | split-window -h
+bind-key - split-window -v
+
+# Resize windows with arrow keys
+bind-key Left  resizep -L
+bind-key Down  resizep -D
+bind-key Up    resizep -U
+bind-key Right resizep -R
+
+# For modern tmux, replace status-fg / status-bg with this.
+# set-option -ag status-style fg=white
+# set-option -ag status-style bg=default
+set -g status-fg white
+set -g status-bg default
+
+set -g status-justify centre
+
+set -g status-left '#(whoami)@#(hostname)'
+# for modern tmux replace status-left-fg/bg and status-right-fg/bg with this
+set-option -ag status-left-style fg=cyan
+set-option -ag status-right-style fg=yellow
+set -g status-left-length 30
+
+set -g status-right "#(cat /proc/loadavg | awk '{print $1, $2, $3}')"
+# If on Mac, OSX doesn't have /proc - so use this instead:
+# set -g status-right "#(w | head -n1 | cut -d":" -f4)"
+
+# set -g default-terminal "screen-256color"
+
+# tmux-256color instead of screen-256color enables italics
+# some linux distros don't play nicely with tmux-256color, so default is xterm-256color
+#set -g default-terminal "tmux-256color"
+set -g default-terminal "xterm-256color"
+
+# Tc enables true color
+set -ag terminal-overrides ",*256col*:colors=256:Tc"
+
+# Ms modifies OSC 52 clipboard handling to work with mosh, see
+# https://gist.github.com/yudai/95b20e3da66df1b066531997f982b57b
+#set -ag terminal-overrides "vte*:XT:Ms=\\E]52;c;%p2%s\\7,xterm*:XT:Ms=\\E]52;c;%p2%s\\7"
+set-option -ag terminal-overrides ",tmux-256color:Ms=\\E]52;c;%p2%s\\7"
+
+# enable OSC 52 clipboard
+# https://medium.freecodecamp.org/tmux-in-practice-integration-with-system-clipboard-bcd72c62ff7b
+set -g set-clipboard on
+
+setw -g aggressive-resize on
+
