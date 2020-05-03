@@ -688,7 +688,7 @@ install_utils() {
         msg bold yellow " [!!!] Binary output folder '$out_dir' is not writable by current user."
         if has_sudo; then
             msg bold green " [+++] Detecting passwordless working sudo. Will install into $out_dir using sudo."
-            install() { sh -c sudo install "$@"; }
+            install() { sudo install "$@"; }
         else
             msg bold yellow " [!!!] Sudo not available (or requires password)"
             msg bold yellow " [!!!] Will install binary utilities into ${HOME}/.local/bin instead."
