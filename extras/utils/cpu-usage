@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+##################################################
+#
+# Small helper script - part of Someguy123/someguy-scripts
+# Outputs the current CPU usage to stdout in the form of "23.45%"
+#
+# Install into /usr/local/bin/cpu-usage
+#
+# Source: https://github.com/Someguy123/someguy-scripts
+#
+##################################################
+
+OS="$(uname -s)"
+
+if [[ "$OS" == "Darwin" ]]; then
+    top -l 1 | grep -E "^CPU|^Phys" | head -n1 | awk '{print $3}'
+elif [[ "$OS" == "Linux" ]]; then
+    top -bn2 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1"%"}' | tail -n1
+else
+    echo "0%"
+    >&2 echo " [!!!] Unsupported operating system '$OS' - Only Linux and OSX (Darwin) are supported"
+    exit 1
+fi
+
+

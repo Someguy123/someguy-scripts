@@ -1,0 +1,363 @@
+#!/usr/bin/env bash
+##################################################
+#
+# Small helper script - part of Someguy123/someguy-scripts
+# Outputs the current RAM usage to stdout in the form of "23.45%"
+#
+# ram-usage [used|free|swap|stats] [pct|b|k|m|g|t] [precision]
+#
+# arg 1 = the memory category to check - either: 
+#
+#       - used memory (used, mem, ram)
+#       - free memory (free, memfree, unused, avail)
+#       - swap used (swap, swp, page, virt)
+#       - statistics (stat, stats) (default output format is GB - only supports bytes output)
+#
+# arg 2 = the output format - either:
+#
+#       - percentage (default) (pct, percent, '%')
+#       - bytes (b, B, byt, bytes)
+#       - kilobytes (k, kb, kib, KiB, kbyt(es), kil(obytes))
+#       - megabytes (m, mb, mib, MiB, mbyt(es), mega(bytes))
+#       - gigabytes (g, gb, gib, GiB, gbyt(es), giga(bytes))
+#       - terabytes (t, tb, tib, TiB, tbyt(es), tera(bytes))
+#
+# arg 3 = the math precision (decimal places) to use. defaults to 3 DP. 
+#         if set to 0, will output integer values.
+#
+# Install into /usr/local/bin/ram-usage
+#
+# Source: https://github.com/Someguy123/someguy-scripts
+#
+##################################################
+
+OS="$(uname -s)"
+
+: "${MEM_TYPE="memused"}"
+: "${FMT="pct"}"
+: "${FMT_SIZING="pct"}"
+: "${DP=3}"
+: "${INC_SHARED=1}"
+: "${INC_CACHE=0}"
+: "${FREE_TYPE='available'}"
+: "${DEBUG=0}"
+
+_debug() {
+    (( DEBUG == 1 )) && >&2 echo " [DEBUG] $*" || true
+}
+
+_help() {
+    echo "
+Usage:   $0 [used|free|swap] [pct|b|k|m|g|t] [precision]
+
+Examples:
+
+    $ $0                # With no arguments, defaults to used memory as a percentage
+    75.600%
+
+    $ $0 free           # Free memory as a percentage
+    24.400%
+
+    $ $0 free g         # Free memory in gigabytes
+    14.772
+
+    $ $0 used m 0       # Used memory in megabytes, rounded to an integer
+    47967
+
+    $ $0 stats          # Show used memory vs. free memory
+    47.126G / 61.728G
+
+    $ $0 stats g 0      # Used memory vs. free memory (in GB, rounded to 0 DP - integer)
+    47G / 61G
+
+Options:
+
+    arg 1 = the memory category to check - either: 
+
+        - used memory (used, mem, ram)
+        - free memory (free, memfree, unused, avail)
+        - swap used (swap, swp, page, virt)
+        - statistics (stat, stats) (default output format is GB - only supports bytes output)
+
+    arg 2 = the output format - either:
+
+        - percentage (default) (pct, percent, '%')
+        - bytes (b, B, byt, bytes)
+        - kilobytes (k, kb, kib, KiB, kbyt(es), kil(obytes))
+        - megabytes (m, mb, mib, MiB, mbyt(es), mega(bytes))
+        - gigabytes (g, gb, gib, GiB, gbyt(es), giga(bytes))
+        - terabytes (t, tb, tib, TiB, tbyt(es), tera(bytes))
+
+    arg 3 = the math precision (decimal places) to use. defaults to 3 DP. 
+            if set to 0, will output integer values.
+
+Environment Options:
+
+    INC_SHARED (def: 1) - (Linux only) - Boolean 1 (true) or 0 (false). Consider 'shared' memory as used from the results of 'free -m'
+
+    INC_CACHE  (def: 0) - (Linux only) - Boolean 1 (true) or 0 (false). Consider 'buff/cache' memory as used from the results of 'free -m'
+
+    FREE_TYPE  (def: 'available') - (Linux only) - Either 'available' or 'free'. Controls whether to use 
+               the 'available' section as 'free' memory, or to use the 'free' section from 'free -m'
+    
+    DEBUG      (def: 0) - Boolean 1 (true) or 0 (false). Print debugging statements to stderr, useful for debugging any issues
+               with the script.
+
+Install into /usr/local/bin/ram-usage
+
+Source: https://github.com/Someguy123/someguy-scripts
+    "
+    exit 1
+}
+
+
+
+(( $# > 0 )) && MEM_TYPE="$1"
+
+case "$MEM_TYPE" in
+    swap|SWAP|swp|SWP|pag*|PAG*|virt*|VIRT*)
+        MEM_TYPE="swap"
+        ;;
+    free|FREE|memfree|MEMFREE|unused|avail*|AVAIL*)
+        MEM_TYPE="memfree"
+        ;;
+    mem*|MEM*|ram|RAM|phys*|PHYS*|used|USED)
+        MEM_TYPE="memused"
+        ;;
+    stat*|STAT*)
+        MEM_TYPE="stats"
+        FMT="g"
+        ;;
+    *)
+        >&2 echo -e " [!!!] Invalid MEM_TYPE '$MEM_TYPE' \n"
+        _help
+        ;;
+esac
+
+if [[ "$OS" == "Darwin" && "$MEM_TYPE" == "swap" ]]; then
+    FMT="m"
+fi
+
+(( $# > 1 )) && FMT="$2"
+(( $# > 2 )) && DP=$(($3))
+
+case "$FMT" in
+    b|B|byt*|BYT*)
+        FMT="bytes"
+        FMT_SIZING="b"
+        ;;
+    m|M|mb|MB|mib|MiB|mbyt*|MBYT*|mega*|MEGA*)
+        FMT="bytes"
+        FMT_SIZING="m"
+        ;;
+    k|K|kb|KB|kib|KiB|kbyt*|KBYT*|kil*|KIL*)
+        FMT="bytes"
+        FMT_SIZING="k"
+        ;;
+    g|G|gb|GB|gib|GiB|gbyt*|GBYT*|gig*|GIG*)
+        FMT="bytes"
+        FMT_SIZING="g"
+        ;;
+    t|T|tb|TB|tib|TiB|tbyt*|TBYT*|ter*|TER*)
+        FMT="bytes"
+        FMT_SIZING="t"
+        ;;
+    pc*|per*|PC*|PER*|'%')
+        FMT="pct" FMT_SIZING="pct"
+        ;;
+    *)
+        >&2 echo -e " [!!!] Invalid FMT '$FMT' \n"
+        _help
+        ;;
+esac
+
+if [[ "$OS" == "Darwin" ]]; then
+    vstat=$(vm_stat)
+fi
+
+calc() {
+    local r_dp="$DP" num="$1"
+    (( $# > 1 )) && r_dp="$2"
+
+    bc <<< "scale=${r_dp}; ${num}" 
+}
+
+round() {
+    local r_dp="$DP" num="$1"
+    (( $# > 1 )) && r_dp="$2"
+    bc <<< "scale=${r_dp}; ${num} / 1"
+}
+
+_exm() {
+    # extract the number of pages for a given vm_stat category, multiplying them by 4096 bytes (macOS page size)
+    # categories should be passed as split arguments, e.g. '_exm pages wired down'
+    local pos=$(( $# + 1 )) p_pages
+
+    p_pages=$(grep -i "$*:" <<< "$vstat" | awk '{print $'$pos'}' | tr -d '.')
+    calc "$p_pages * 4096"
+}
+
+# ps -caxm -orss= | awk '{ sum += $1 } END { print "Resident Set Size: " sum/1024 " MiB" }'
+
+
+
+osx_total_mem() {
+    # returns the approximate total amount of memory available on an OSX system in bytes
+    p_free=$(_exm pages free)
+    p_active=$(_exm pages active)
+    p_inactive=$(_exm pages inactive)
+    p_speculative=$(_exm pages speculative)
+    p_throttled=$(_exm pages throttled)
+    p_wired=$(_exm pages wired down)
+    p_purgeable=$(_exm pages purgeable)
+    calc "$p_free + $p_active + $p_inactive + $p_speculative + $p_throttled + $p_wired + $p_purgeable"
+}
+
+osx_swap_used() {
+    # returns the approximate total amount of swap used on an OSX system in bytes
+    p_swapins=$(_exm swapins)
+    p_swapouts=$(_exm swapouts)
+    calc "$p_swapouts - $p_swapins"
+}
+
+convert_kb() {
+    local kib_used="$1" dest_sz="$2"
+    case "$dest_sz" in
+        b) calc "scale=$DP; $kib_used * 1024 " ;;
+        k) calc "scale=$DP; $kib_used" ;;
+        m) calc "scale=$DP; $kib_used / 1024" ;;
+        g) calc "scale=$DP; $kib_used / 1024 / 1024" ;;
+        t) calc "scale=$DP; $kib_used / 1024 / 1024 / 1024" ;;
+        *)
+            >&2 echo " [$0 convert_kb] Invalid byte format: '$dest_sz' - must be one of: b, k, m, g, t"
+            return 1
+            ;;
+    esac
+}
+
+get_ram_stats() {
+    local mtype="$MEM_TYPE" fmt="$FMT" fmsz="$FMT_SIZING"
+    (( $# > 0 )) && mtype="$1"
+    (( $# > 1 )) && fmt="$2"
+    (( $# > 3 )) && fmsz="$3"
+
+    if [[ "$OS" == "Darwin" ]]; then
+        kib_used=$(ps -caxm -orss= | awk '{ sum += $1 } END { print sum }')
+        _debug "OSX total KB used: $kib_used"
+        kib_used=$((kib_used))
+        _debug "OSX total KB used (casted to number): $kib_used"
+
+        kib_total=$(osx_total_mem)
+        _debug "OSX total bytes available: $kib_total"
+        kib_total=$(DP=5 calc "$kib_total / 1024")
+        _debug "OSX total KB available: $kib_total"
+
+        _debug "Getting ${mtype} using size ${fmsz}"
+        mem_ratio=$(calc "$kib_used / $kib_total" 10)
+        pct_used=$(calc "$mem_ratio * 100" 10)
+
+        if [[ "$mtype" == "memused" ]]; then
+            if [[ "$fmt" == "bytes" ]]; then
+                convert_kb "$kib_used" "$fmsz"
+            else
+                # echo "$(( (kib_used / kib_total) * 100 ))%"
+                echo "$(round "$pct_used")%"
+            fi
+        elif [[ "$mtype" == "memfree" ]]; then
+            if [[ "$fmt" == "bytes" ]]; then
+                convert_kb "$((kib_total - kib_used))" "$fmsz"
+            else
+                pct_free=$(calc "100 - $pct_used")
+                echo "$(round "$pct_free")%"
+            fi
+        elif [[ "$mtype" == "memtotal" ]]; then
+            convert_kb "$kib_total" "$fmsz"
+        elif [[ "$mtype" == "swap" ]]; then
+            bytes_swap=$(osx_swap_used)
+            if [[ "$fmt" == "bytes" ]]; then
+                convert_kb "$(calc "$bytes_swap / 1024")" "$fmsz"
+            else
+                echo "0%"
+                >&2 echo " [!!!] Swap usage is not available as a percentage on OSX. Try '$0 mb' or '$0 gb'."
+                exit 1
+            fi
+        fi
+    elif [[ "$OS" == "Linux" ]]; then
+        mem_stats=$(free -k | grep "Mem:")
+        swap_stats=$(free -k | grep "Swap:")
+        mem_total=$(awk '{print $2}' <<< "$mem_stats")
+
+        mem_used=$(awk '{print $3}' <<< "$mem_stats")
+        mem_shared=$(awk '{print $5}' <<< "$mem_stats")
+        mem_cached=$(awk '{print $6}' <<< "$mem_stats")
+
+        _debug "Linux total RAM KB: $mem_total"
+        _debug "Linux used RAM KB: $mem_used"
+        _debug "Linux shared RAM KB: $mem_shared"
+        _debug "Linux cached RAM KB: $mem_cached"
+
+        # The "buff/cache" section of 'free' is actually shared + buff/cache
+        # So we only append the buff/cache value if INC_CACHE is enabled, not both shared + cached
+        if (( INC_CACHE == 1 )); then
+            _debug "INC_CACHE is 1. Adding mem_cached ($mem_cached) to mem_used ($mem_used)"
+            mem_used=$(( mem_used + mem_cached ))
+        elif (( INC_SHARED == 1 )); then
+            _debug "INC_SHARED is 1. Adding mem_shared ($mem_shared) to mem_used ($mem_used)"
+            mem_used=$(( mem_used + mem_shared ))
+        fi
+        _debug "Final mem_used: $mem_used"
+
+        if [[ "$FREE_TYPE" == "free" ]]; then
+            mem_free=$(awk '{print $4}' <<< "$mem_stats")
+            _debug "Using section 'free' for mem_free: $mem_free"
+        else
+            mem_free=$(awk '{print $7}' <<< "$mem_stats")
+            _debug "Using section 'available' for mem_free: $mem_free"
+        fi
+        swap_total=$(awk '{print $2}' <<< "$swap_stats") swap_used=$(awk '{print $3}' <<< "$swap_stats") 
+        _debug "Raw swap values = swap_total: $swap_total || swap_used: $swap_used"
+        # swap_free=$(awk '{print $4}' <<< "$mem_stats")
+
+        mem_ratio=$(calc "$mem_used / $mem_total" 10)
+        pct_used=$(calc "$mem_ratio * 100" 10)
+        pct_free=$(calc "100 - $pct_used" 10)
+        _debug "Getting ${mtype} using size ${fmsz}"
+        if [[ "$mtype" == "memused" ]]; then
+            if [[ "$fmt" == "bytes" ]]; then
+                convert_kb "$mem_used" "$fmsz"
+            else
+                echo "$(round "$pct_used")%"
+            fi
+        elif [[ "$mtype" == "memfree" ]]; then
+            if [[ "$fmt" == "bytes" ]]; then
+                convert_kb "$((mem_free))" "$fmsz"
+            else
+                echo "$(round "$pct_free")%"
+            fi
+        elif [[ "$mtype" == "memtotal" ]]; then
+            convert_kb "$mem_total" "$fmsz"
+        elif [[ "$mtype" == "swap" ]]; then
+            if [[ "$fmt" == "bytes" ]]; then
+                convert_kb "$(( swap_used ))" "$fmsz"
+            else
+                swap_pct=$(calc "100 - (($swap_used / $swap_total) * 100)" 10)
+                echo "$(round "$swap_pct")%"
+            fi
+        fi
+    else
+        echo "0%"
+        >&2 echo " [!!!] Unsupported operating system '$OS' - Only Linux and OSX (Darwin) are supported"
+        exit 1
+    fi
+}
+
+
+
+if [[ "$MEM_TYPE" == "stats" ]]; then
+    s_used=$(get_ram_stats "memused")
+    s_total=$(get_ram_stats "memtotal")
+
+    echo "${s_used}${FMT_SIZING} / ${s_total}${FMT_SIZING}" | tr '[:lower:]' '[:upper:]'
+else
+    get_ram_stats
+fi

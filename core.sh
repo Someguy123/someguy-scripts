@@ -158,11 +158,12 @@ _sgs_help() {
 ===============================
 To avoid mistakes, the menu is 
 controlled by letter choices
-    ${GREEN}inst${RESET}        - Install various useful packages
+    ${GREEN}inst${RESET}        - Install various useful packages (also runs 'utils')
     ${GREEN}pk_list${RESET}     - List the packages that 'inst' would install
     ${GREEN}conf${RESET}        - Install dotfile configs + oh-my-zsh
     ${GREEN}loc${RESET}         - Fix locale problems - set locale to en_US.UTF-8 and re-gen locales
     ${GREEN}zsh${RESET}         - Update the global /etc/zsh/zsh_sg with the current version in this repo
+    ${GREEN}util(s)${RESET}     - Install/update utility programs from extras/utils into /usr/local/bin or ~/.local/bin
     ${GREEN}zfiles${RESET}      - Update either global /etc/zsh_files (if ran as root), or local ~/.zsh_files (if ran as user)
     ${GREEN}global${RESET}      - Install dotfile configs globally
     ${GREEN}instconf${RESET}    - Run inst, then conf after
@@ -199,6 +200,9 @@ handle_menu() {
                 msg cyan " - ${BOLD}${pk}"
             done
             echo;;
+        util*)
+            install_utils
+            ;;
         compi*)
             _sgs_compile "${@:2}";;
         [Qq]|exit|quit )

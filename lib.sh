@@ -40,9 +40,24 @@ fi
 echo
 echo
 
+OS="$(uname -s)"
+
 # Override where the dotfiles and zsh_files get copied to
 # by using CONFIG_DIR=/where/you/want ./core.sh
 : ${CONFIG_DIR="$HOME"}
+
+if [ -z ${INSTALL_USERS+x} ]; then
+    INSTALL_USERS=(
+        ubuntu
+        debian
+        chris
+        privex
+        kale
+        someguy
+        someguy123
+        root
+    )
+fi
 
 SGLIB_LOADED='y'
 
@@ -275,6 +290,13 @@ install_confs() {
     fi
     msg
     msg cyan " >>> Installing dotfiles..."
+    if [[ -d "${CONFIG_DIR}/.tmux" ]]; then
+        msg yellow " [!!!] Folder ${CONFIG_DIR}/.tmux already exists. Not cloning github.com/gpakosz/.tmux"
+    else
+        msg green " >>> Cloning github.com/gpakosz/.tmux into ${CONFIG_DIR}/.tmux"
+        git clone https://github.com/gpakosz/.tmux "${CONFIG_DIR}/.tmux"
+    fi
+
     # first, see if there are any that will be overwritten and warn against it
     for file in $LIB_DIR/dotfiles/*; do
         [ -e "$file" ] || continue # protect against failed match returning glob
@@ -489,6 +511,16 @@ EOF
 install_global() {
     local instovr="n" instglob="n" owgit='y'
     pkg_not_found rsync rsync
+    pkg_not_found git git
+    pkg_not_found zsh zsh
+    pkg_not_found tmux tmux
+
+    if ! has_command cpu-usage || ! has_command ram-usage; then
+        msg yellow "Missing 'cpu-usage' or 'ram-usage' utility for custom tmux config."
+        msg cyan "Calling install_utils to install them now..."
+        install_utils
+    fi
+
     echo
     msg red "This tool will install various dotfile configs globally, so they are used by default for all users."
     echo "Warnings will be given before overwriting the file."
@@ -509,9 +541,37 @@ install_global() {
         msg yellow " >> Installing extra vim files e.g. syntax highlighting (will make backups for overwritten files in ~/.backups/vim)"
         sudo rsync --backup --suffix="-$(date +%Y-%m-%d)" --backup-dir "$HOME/.backups/vim/" -av "$LIB_DIR/extras/vim/" /etc/vim/
 
+        if [[ -d "/etc/.tmux" ]]; then
+            msg yellow " [!!!] Folder /etc/.tmux already exists. Not cloning github.com/gpakosz/.tmux"
+        else
+            msg green " >>> Cloning github.com/gpakosz/.tmux into /etc/tmux"
+            sudo git clone https://github.com/gpakosz/.tmux "/etc/tmux"
+        fi
+
         msg yellow " >> Installing /etc/tmux.conf"
-        cp "$LIB_DIR/dotfiles/tmux.conf" /etc/tmux.conf
-        cp "$LIB_DIR/dotfiles/tmux.conf.modern" /etc/tmux.conf.modern
+        cp "$LIB_DIR/extras/tmux.conf" /etc/tmux.conf
+
+        msg yellow " >> Installing /etc/tmux.conf.local"
+        cp "$LIB_DIR/dotfiles/tmux.conf.local" /etc/tmux.conf.local
+
+        for u in "${INSTALL_USERS[@]}"; do
+            [[ "$u" == "root" ]] && home_dir="/root" || home_dir="/home/${u}"
+            if [[ ! -d "$home_dir" ]]; then
+                msg yellow "        [...] User ${u} not found ( non-existent home folder '${home_dir}' ) - skipping"
+                continue
+            fi
+            msg cyan "        [...] Linking /etc/tmux to ${home_dir}/.tmux"
+            sudo ln -svi "/etc/tmux" "${home_dir}/.tmux"
+
+            msg cyan "        [...] Linking /etc/tmux/.tmux.conf to ${home_dir}/.tmux.conf"
+            sudo ln -svi "/etc/tmux/.tmux.conf" "${home_dir}/.tmux.conf"
+
+            msg cyan "        [...] Copying $LIB_DIR/dotfiles/tmux.conf.local to ${home_dir}/.tmux.conf.local"
+            sudo cp -vi "$LIB_DIR/dotfiles/tmux.conf.local" "${home_dir}/.tmux.conf.local"
+
+            msg cyan "        [...] Fixing ownership of ${home_dir}/.tmux.conf.local"
+            sudo chown "${u}:${u}" "${home_dir}/.tmux.conf.local"
+        done
 
         if [[ -f /etc/gitconfig && $IS_FRESH == "n" ]]; then
             owgit='n'
@@ -616,4 +676,32 @@ update_zshfiles() {
     rsync -avh --backup --suffix="-$(date +%Y-%m-%d)" --backup-dir "$backup_dir" --progress "$LIB_DIR/zsh_files/" "$out_dir"
     msg
     msg bold green "(+) Finished."
+}
+
+install_utils() {
+    local out_dir="/usr/local/bin"
+    pkg_not_found bc bc
+
+    if can_write "$out_dir"; then
+        msg green " [+++] Detected global binary output folder '$out_dir' is writable by current user"
+    else
+        msg bold yellow " [!!!] Binary output folder '$out_dir' is not writable by current user."
+        if has_sudo; then
+            msg bold green " [+++] Detecting passwordless working sudo. Will install into $out_dir using sudo."
+            install() { sh -c sudo install "$@"; }
+        else
+            msg bold yellow " [!!!] Sudo not available (or requires password)"
+            msg bold yellow " [!!!] Will install binary utilities into ${HOME}/.local/bin instead."
+            out_dir="${HOME}/.local/bin"
+        fi
+    fi
+
+    if [[ ! -d "$out_dir" ]]; then
+        msg yellow " [...] Folder $out_dir doesn't exist. Creating it..."
+        mkdir -pv "$out_dir"
+        msg yellow " [+++] Created folder $out_dir"
+    fi
+    msg green " >>> Installing binaries from ${LIB_DIR}/extras/utils into $out_dir "
+    install -v "${LIB_DIR}/extras/utils"/* "$out_dir"
+    msg bold green " [+++] Finished\n"
 }
