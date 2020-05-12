@@ -15,12 +15,10 @@ if which tput >/dev/null 2>&1; then
     ncolors=$(tput colors)
 fi
 
+BOLD="" RED="" GREEN="" YELLOW="" BLUE="" MAGENTA="" CYAN="" WHITE="" RESET="" NORMAL=""
 if [ -t 1 ]; then
     BOLD="$(tput bold)" RED="$(tput setaf 1)" GREEN="$(tput setaf 2)" YELLOW="$(tput setaf 3)" BLUE="$(tput setaf 4)"
-    MAGENTA="$(tput setaf 5)" CYAN="$(tput setaf 6)" WHITE="$(tput setaf 7)" RESET="$(tput sgr0)" NORMAL="$(tput sgr0)"
-else
-    BOLD="" RED="" GREEN="" YELLOW="" BLUE=""
-    MAGENTA="" CYAN="" WHITE="" RESET="" NORMAL=""
+    MAGENTA="$(tput setaf 5)" CYAN="$(tput setaf 6)" WHITE="$(tput setaf 7)" RESET="$(tput sgr0)" NORMAL="$(tput sgr0)"  
 fi
 
 
@@ -75,7 +73,7 @@ function msgerr () {
 
 # make msg + colors available to subshells
 # use -f for msg if using bash
-export msg RED GREEN YELLOW BLUE BOLD NORMAL RESET
+export msg msgts msgerr RED GREEN YELLOW BLUE BOLD NORMAL RESET
 #####
 #
 # This color code snippet was borrowed from oh-my-zsh's install script

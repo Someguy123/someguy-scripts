@@ -85,6 +85,7 @@ if ! [ -z ${ZSHFILES_DIR+x} ]; then
   source "$ZSHFILES_DIR/gnusafe.zsh"     # GNU Utility sanity checker
   source "$ZSHFILES_DIR/ssh.zsh"         # Helpers such as await-ssh, ssh-reset
   source "$ZSHFILES_DIR/rsync.zsh"       # brsync - better rsync
+  source "$ZSHFILES_DIR/time.zsh"        # Date/time helper functions
   source "$ZSHFILES_DIR/steem.zsh"       # Steem RPC related e.g. rpc_rq, rpc_get_time
   if [[ "$(uname -s)" == "Darwin" ]]; then
       source "$ZSHFILES_DIR/osx.zsh"     # OSX specific functions
