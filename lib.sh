@@ -50,6 +50,9 @@ if [ -z ${INSTALL_USERS+x} ]; then
     INSTALL_USERS=(
         ubuntu
         debian
+        centos
+        fedora
+        user
         chris
         privex
         kale
@@ -92,7 +95,7 @@ if [ -z ${INSTALL_PKGS+x} ]; then
         # Session management
         tmux screen
         # Security
-        iptables-persistent fail2ban
+        fail2ban
         # Network tools
         mtr-tiny iputils-ping nmap netcat dnsutils
         # Development
