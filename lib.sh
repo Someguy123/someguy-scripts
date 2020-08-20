@@ -23,6 +23,11 @@ if [ -z ${LIB_DIR+x} ]; then
 else
     echo " [-] \$LIB_DIR was set from environment. Using the following folder as someguy-scripts base: $LIB_DIR"
 fi
+
+echo " [...] Initialising / updating Git submodules using: git submodule update --recursive --remote --init ${LIB_DIR}"
+
+git submodule update --recursive --remote --init "${LIB_DIR}"
+
 _lcl_shc="${LIB_DIR}/scripts/shell-core/load.sh" _hm_shc="${HOME}/.pv-shcore/load.sh" _glb_shc="/usr/local/share/pv-shcore/load.sh"
 echo
 # Install and/or load Privex ShellCore if it isn't already loaded.
@@ -39,6 +44,8 @@ if [ -z ${S_CORE_VER+x} ]; then
 fi
 echo
 echo
+
+export PATH="${PATH}:${LIB_DIR}/scripts/privex-utils/bin"
 
 OS="$(uname -s)"
 
@@ -273,10 +280,24 @@ install_omz() {
     OMZSH_INSTALLED="y"
 }
 
+install_omz_themes() {
+    if [ -d "$HOME/.oh-my-zsh" ]; then
+        msg cyan " >>> Installing extra oh-my-zsh themes into $HOME/.oh-my-zsh"
+        sexy-copy -r "${LIB_DIR}/omz_themes/" "${HOME}/.oh-my-zsh/custom/themes/"
+    fi
+    if [ -d "/etc/oh-my-zsh" ]; then
+        msg cyan " >>> Installing extra oh-my-zsh themes into /etc/oh-my-zsh"
+        sudo sexy-copy -r "${LIB_DIR}/omz_themes/" "/etc/oh-my-zsh/custom/themes/"
+    fi
+}
+
+
+
 ######
 # Install config files
 #####
 install_confs() {
+    pkg_not_found rsync rsync
     if [ ! -d "$HOME/.oh-my-zsh" ]; then
         msg yellow " >>> Looks like oh-my-zsh isn't installed..."
         msg yellow "     [+] Will now install it...\n"
@@ -291,6 +312,7 @@ install_confs() {
     else
         cp -iv "${LIB_DIR}/extras/zsh_skel" "${CONFIG_DIR}/.zshrc"
     fi
+    install_omz_themes
     msg
     msg cyan " >>> Installing dotfiles..."
     if [[ -d "${CONFIG_DIR}/.tmux" ]]; then
@@ -617,6 +639,8 @@ EOF
             sudo git clone --depth=1 https://github.com/robbyrussell/oh-my-zsh.git /etc/oh-my-zsh
         fi
         
+        install_omz_themes
+
         msg bold green "Finished. The configs should now work for all users"
         msg red "NOTE: If a user has a .zshrc, the global zshrc should be ignored."
         msg red "      If it isn't, disable the global zshrc for a user by putting 'unset GLOBAL_RCS' into \$HOME/.zshenv"
@@ -678,6 +702,7 @@ update_zshfiles() {
     [[ ! -d "$backup_dir" ]] && mkdir -pv "$backup_dir" || true
     rsync -avh --backup --suffix="-$(date +%Y-%m-%d)" --backup-dir "$backup_dir" --progress "$LIB_DIR/zsh_files/" "$out_dir"
     msg
+    install_omz_themes
     msg bold green "(+) Finished."
 }
 
@@ -706,5 +731,11 @@ install_utils() {
     fi
     msg green " >>> Installing binaries from ${LIB_DIR}/extras/utils into $out_dir "
     install -v "${LIB_DIR}/extras/utils"/* "$out_dir"
+    msg green " >>> Installing privex-utils from ${LIB_DIR}/scripts/privex-utils"
+    pkg_not_found python3 python3
+    pkg_not_found pip3 python3-pip
+    cd "${LIB_DIR}/scripts/privex-utils"
+    sudo ./install.sh
+    cd - &>/dev/null
     msg bold green " [+++] Finished\n"
 }

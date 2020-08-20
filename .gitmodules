@@ -1,3 +1,8 @@
 [submodule "shellcore"]
 	path = scripts/shell-core
 	url = https://github.com/Privex/shell-core
+	branch = master
+[submodule "privex-utils"]
+	path = scripts/privex-utils
+	url = https://github.com/Privex/utils.git
+	branch = master
