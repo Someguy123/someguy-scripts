@@ -104,7 +104,7 @@ if [ -z ${INSTALL_PKGS+x} ]; then
         # Security
         fail2ban
         # Network tools
-        mtr-tiny iputils-ping nmap netcat dnsutils
+        mtr-tiny iputils-ping nmap netcat dnsutils net-tools
         # Development
         build-essential vim nano zsh
         # Server debugging/stats
