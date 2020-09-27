@@ -117,7 +117,7 @@ _sgs_compile() {
 
     {
         msg "$SHEBANG_LINE"
-        echo -n "$_sgs_copyright"
+        echo -e -n "$_sgs_copyright"
         # msgerr "Compiling ShellCore..."
         # Trim away any /usr/bin/* or /bin/* shebangs from the ShellCore compilation
         ./run.sh compile | remove_shebangs | compress_newlines
@@ -151,7 +151,7 @@ _sgs_compile() {
 
 _sgs_help() {
     echo
-    echo "
+    echo -e "
 ===============================
       ${BLUE}Someguy123's Server${RESET}
          ${GREEN}Setup Helper${RESET}
