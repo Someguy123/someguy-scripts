@@ -17,8 +17,15 @@ fi
 
 BOLD="" RED="" GREEN="" YELLOW="" BLUE="" MAGENTA="" CYAN="" WHITE="" RESET="" NORMAL=""
 if [ -t 1 ]; then
-    BOLD="$(tput bold)" RED="$(tput setaf 1)" GREEN="$(tput setaf 2)" YELLOW="$(tput setaf 3)" BLUE="$(tput setaf 4)"
-    MAGENTA="$(tput setaf 5)" CYAN="$(tput setaf 6)" WHITE="$(tput setaf 7)" RESET="$(tput sgr0)" NORMAL="$(tput sgr0)"  
+    if command -v tput &>/dev/null; then
+        BOLD="$(tput bold)" RED="$(tput setaf 1)" GREEN="$(tput setaf 2)" YELLOW="$(tput setaf 3)" BLUE="$(tput setaf 4)"
+        PURPLE="$(tput setaf 5)" MAGENTA="$(tput setaf 5)" CYAN="$(tput setaf 6)" WHITE="$(tput setaf 7)"
+        RESET="$(tput sgr0)" NORMAL="$(tput sgr0)"  
+    else
+        BOLD='\033[1m' RED='\033[00;31m' GREEN='\033[00;32m' YELLOW='\033[00;33m' BLUE='\033[00;34m'
+        PURPLE='\033[00;35m' MAGENTA='\033[00;35m' CYAN='\033[00;36m' WHITE='\033[01;37m'
+        RESET='\033[0m' NORMAL='\033[0m'
+    fi
 fi
 
 
