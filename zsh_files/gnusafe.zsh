@@ -95,7 +95,7 @@ function gnusafe () {
         alias gawk="awk"
         alias gsed="sed"
         # if we don't have egrep, alias it
-        if [[ $(command -v egrep) ]]; then
+        if has-cmd egrep; then
             alias egrep="grep -E"
         fi
         trap gnusafe-cleanup EXIT
