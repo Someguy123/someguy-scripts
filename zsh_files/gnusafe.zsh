@@ -19,6 +19,10 @@
 : ${HAS_GSED=0}
 : ${HAS_GAWK=0}
 
+has-cmd() {
+    command -v "$@" &> /dev/null
+}
+
 function gnusafe () {
     # Detect if the script is being ran from bash or zsh
     # so we can enable aliases for scripts
@@ -44,19 +48,19 @@ function gnusafe () {
     if [[ $(uname -s) != 'Linux' ]] && [ -z ${FORCE_UNIX+x} ]; then
         # msg warn " --- WARNING: Non-Linux detected. ---"
         # echo " - Checking for ggrep"
-        if [[ $(command -v ggrep) ]]; then
+        if has-cmd ggrep; then
             HAS_GGREP=1
             # msg pos " + found GNU alternative 'ggrep'. setting alias"
             alias grep="ggrep"
             alias egrep="ggrep -E"
         fi
         # echo " - Checking for gsed"	
-        if [[ $(command -v gsed) ]]; then
+        if has-cmd gsed; then
             HAS_GSED=1
             # msg pos " + found GNU alternative 'gsed'. setting alias"
             alias sed=gsed
         fi
-        if [[ $(command -v gawk) ]]; then
+        if has-cmd gawk; then
             HAS_GAWK=1
             # msg pos " + found GNU alternative 'gawk'. setting alias"
             alias awk=gawk
