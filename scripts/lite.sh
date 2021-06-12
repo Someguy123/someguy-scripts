@@ -76,17 +76,17 @@ if [ -z ${INSTALL_PKGS+x} ]; then
     msg cyan " >>> Using default lite.sh INSTALL_PKGS as wasn't set in environment."
     INSTALL_PKGS=(
         # General
-        git curl wget
+        git curl wget pv bash-completion
         # Session management
         tmux screen
         # Network tools
-        mtr-tiny iputils-ping netcat dnsutils
+        mtr-tiny iputils-ping netcat dnsutils net-tools
         # Development
         vim nano zsh
         # Server stats
         htop
         # Compression/Decompression
-        zip unzip xz-utils
+        zip unzip xz-utils liblz4-tool lbzip2 pigz p7zip lzip
         # Other
         thin-provisioning-tools
     )
