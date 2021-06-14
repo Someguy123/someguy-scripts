@@ -23,6 +23,8 @@
 # the files needed, regardless of where it was ran from.
 _CORE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
+(( $# > 1 )) && [[ "$1" == "compile" ]] && export _SG_COMPILING=1
+
 # Load lib.sh which contains all of the functions and some initialisation code
 . "${_CORE_DIR}/lib.sh"
 
@@ -60,7 +62,7 @@ remove_shebangs() { sed -E "s;^#!/usr/bin.*$;;" "$@" | sed -E "s;^#!/bin.*$;;"; 
 _sgs_compile() {
     local _PWD="$PWD"
     _CORE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-
+    export _SG_COMPILING=1
     # msgerr "Unsetting variables..."
     unset SRCED_COLORS &>/dev/null || true
     unset SRCED_IDENT_SH &>/dev/null || true
@@ -126,8 +128,13 @@ _sgs_compile() {
         msg "\n### --------------------------------------"
         msg "### Someguy123/someguy-scripts/scripts/base.sh"
         msg "### --------------------------------------"
+        echo -e '\ntee /tmp/findbin.py <<"EOF"'
+        cat "${_CORE_DIR}/scripts/min_findbin.py"
+        echo -e "\nEOF\n"
         # msgerr "Cleaning ${_CORE_DIR}/scripts/base.sh"
         cat "${_CORE_DIR}/scripts/base.sh" | remove_sources | remove_comments | tr -s '\n\n'
+        
+
         for f in "${midfiles[@]}"; do
             # If a passed file path doesn't exist, check if it exists in the same folder as core.sh
             # or inside of the scripts folder.
@@ -145,7 +152,7 @@ _sgs_compile() {
         done
     } > "$out_file"
 
-    (($use_file==1)) && msg green " -> Compiled someguy-scripts into file '$out_file'" || \
+    (($use_file==1)) && msgerr green " -> Compiled someguy-scripts into file '$out_file'" || \
         { cat "$out_file"; rm -f "$out_file"; }
 }
 

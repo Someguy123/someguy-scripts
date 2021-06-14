@@ -16,44 +16,88 @@
 : ${SG_DEBUG=0}
 export SG_SCRIPTS_VERSION='2.0.0'
 
-echo
-# Detect the PWD of this file, so we can appropriately find 
-# the files needed, regardless of where it was ran from.
-if [ -z ${LIB_DIR+x} ]; then 
-    LIB_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-else
-    echo " [-] \$LIB_DIR was set from environment. Using the following folder as someguy-scripts base: $LIB_DIR"
-fi
-
 msg() {
-    #local clean_args
-    #clean_args=()
-    #while (( $# >= 2 )); do
-    #    grep -Eiq "red|blue|green|yellow|magenta|purple|bold" <<< "$1" || clean_args+=("$1")
-    #    shift
-    #done
-    #echo -e "${clean_args[@]}"
     echo -e "$@"
 }
 msgerr() { >&2 msg "$@"; }
 _debug() { (( SG_DEBUG )) && msgerr "$@" || true; }
 
+msgerr
+# Detect the PWD of this file, so we can appropriately find 
+# the files needed, regardless of where it was ran from.
+if [ -z ${LIB_DIR+x} ]; then 
+    LIB_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+else
+    msgerr " [-] \$LIB_DIR was set from environment. Using the following folder as someguy-scripts base: $LIB_DIR"
+fi
+
+
+find-cmd() {
+    [[ -f "/usr/bin/$1" || -f "/bin/$1" || -f "/usr/sbin/$1" || -f "/sbin/$1" || -f "/usr/local/bin/$1" ]]
+}
+
+instx() {
+    local outx="/dev/stderr" needsudo=1
+    [[ "$1" == "-q" ]] && outx="/dev/null" && shift
+    [[ "$1" == "-u" ]] && needsudo=0 && shift
+    [[ "$1" == "-q" ]] && outx="/dev/null" && shift
+
+    if (( needsudo == 0 )) || (( EUID == 0 )); then
+        cp "$1" "$2" &> "$outx"
+        chmod +x "$2"  &> "$outx"
+    elif find-cmd sudo; then
+        sudo cp "$1" "$2" &> "$outx"
+        sudo chmod +x "$2"  &> "$outx"
+    elif find-cmd su; then
+        su -c "cp \"$1\" \"$2\"" &> "$outx"
+        su -c "chmod +x \"$2\"" &> "$outx"
+    else
+        msgerr " [!!!] Failed to find su nor sudo - cannot install '$1' to '$2'"
+        return 9
+    fi
+}
+
+if [[ -z ${_SG_COMPILING+x} ]] && ! (( _SG_COMPILING )); then
+    if find-cmd python3 && [[ -f "${LIB_DIR}/scripts/findbin.py" ]]; then
+        instx -q "${LIB_DIR}/scripts/findbin.py" /usr/bin/findbin
+        if (( EUID == 0 )); then
+            ln -s /usr/bin/findbin /usr/local/bin/findbin
+            [[ ! -f /usr/local/bin/command ]] && ln -s /usr/bin/findbin /usr/local/bin/command
+            [[ ! -f /usr/local/bin/which ]] && ln -s /usr/bin/findbin /usr/local/bin/which
+        elif find-cmd sudo; then
+            sudo ln -s /usr/bin/findbin /usr/local/bin/findbin
+            [[ ! -f /usr/local/bin/command ]] && sudo ln -s /usr/bin/findbin /usr/local/bin/command
+            [[ ! -f /usr/local/bin/which ]] && sudo ln -s /usr/bin/findbin /usr/local/bin/which
+        elif find-cmd su; then
+            su -c 'ln -s /usr/bin/findbin /usr/local/bin/findbin'
+            [[ ! -f /usr/local/bin/command ]] && su -c 'ln -s /usr/bin/findbin /usr/local/bin/command'
+            [[ ! -f /usr/local/bin/which ]] && su -c 'ln -s /usr/bin/findbin /usr/local/bin/which'
+        else
+            msgerr " [!!!] Failed to find su nor sudo - cannot install /usr/bin/findbin to command/which"
+            msgerr " [!!!] Attempting alias function..."
+            command() { SELF_BIN="command" python3 "${LIB_DIR}/scripts/findbin.py" "$@"; }
+            which() { SELF_BIN="which" python3 "${LIB_DIR}/scripts/findbin.py" "$@"; }
+            export -f command which
+        fi
+    fi
+fi
+
 has_command() { command -v "$1" > /dev/null; }
 
-if ! has_command which; then
-    if has_command whereis && [[ -x "$(whereis whereis)" ]]; then
-        which() { env -- whereis "$1"; [[ "$(env -- whereis "$1")" != "$1:" ]]; }
-        has_binary() { [[ "$(env -- whereis -b "$1")" != "$1:" ]]; }
-    else
-        which() { env -- command -v "$1"; }
-        has_binary() {
-            local cmdloc="$(env -- command -v "$1")"
-            [[ -n "$cmdloc" ]] && [[ -f "$cmdloc" ]] && [[ -x "$cmdloc" ]];
-        }
-    fi
-else
-    has_binary() { /usr/bin/env which "$1" > /dev/null; }
-fi
+# if ! has_command which; then
+#     if has_command whereis && [[ -x "$(whereis whereis)" ]]; then
+#         which() { env -- whereis "$1"; [[ "$(env -- whereis "$1")" != "$1:" ]]; }
+#         has_binary() { [[ "$(env -- whereis -b "$1")" != "$1:" ]]; }
+#     else
+#         which() { env -- command -v "$1"; }
+#         has_binary() {
+#             local cmdloc="$(env -- command -v "$1")"
+#             [[ -n "$cmdloc" ]] && [[ -f "$cmdloc" ]] && [[ -x "$cmdloc" ]];
+#         }
+#     fi
+# else
+#     has_binary() { /usr/bin/env which "$1" > /dev/null; }
+# fi
 
 OS="$(uname -s)"
 : ${BASE_OS=""}
@@ -251,19 +295,7 @@ pkg_not_found() {
     _debug yellow " [pkg_not_found] Checking if we have binary: $cmd (pkg: ${pkg})"
     if ! has_binary "$cmd"; then
         _debug yellow " [pkg_not_found] Got falsey from has_binary '$cmd'"
-        msgerr yellow "WARNING: Command $cmd was not found. installing now..."     
-        #if is-rhel; then
-        #    _new_pkg="$(get-rhel-equiv "$pkg")"
-        #    _debug yellow " --> Found Redhat-based equivalent package for '${pkg}'. Replacing package name with: $_new_pkg"
-        #    pkg="$_new_pkg"
-        #fi
-        #if ! (( PKG_MGR_UPDATED )); then
-        #    _debug green " --> Updating repos for package manager using update command: $PKG_MGR_UPDATE"
-        #    sudo sh -c "${PKG_MGR_UPDATE}"
-        #    PKG_MGR_UPDATED=1
-        #fi
-        #_debug green " --> Installing package(s) '${pkg}' using package manager installer: $PKG_MGR_INSTALLER"
-        #sudo sh -c "${PKG_MGR_INSTALL} ${pkg}"
+        msgerr yellow "WARNING: Command $cmd was not found. installing now..."
         install-pkg "$pkg"
     else
         _debug green " [pkg_not_found] We appear to already have the binary: '$cmd'"
@@ -280,7 +312,7 @@ autopkg() {
         return 2
     fi
     for xc in "${cmdlist[@]}"; do
-        if ! has_binary "$cmd"; then
+        if ! has_binary "$xc"; then
             msgerr yellow "WARNING: Command $xc was not found. Adding to package installation queue ..."
             missingpkgs+=("$xc")
         else
@@ -297,9 +329,6 @@ autopkg() {
 
 autopkg git curl wget rsync python3
 pkg-not-found pip3 python3-pip
-#pkg-not-found git git
-#pkg-not-found curl curl
-#pkg-not-found wget wget
 
 msgerr " [...] Initialising / updating Git submodules using: git submodule update --recursive --remote --init ${LIB_DIR}"
 
@@ -320,20 +349,20 @@ if [ -z ${S_CORE_VER+x} ]; then
     [[ -f "${_lcl_shc}" ]] && source "${_lcl_shc}" || source "$_hm_shc" || source "$_glb_shc" || _sc_fail
 fi
 
-if ! has_command which; then
-    if has_command whereis && [[ -x "$(whereis whereis)" ]]; then
-        which() { env -- whereis "$1"; [[ "$(env -- whereis "$1")" != "$1:" ]]; }
-        has_binary() { [[ "$(env -- whereis -b "$1")" != "$1:" ]]; }
-    else
-        which() { env -- command -v "$1"; }
-        has_binary() {
-            local cmdloc="$(env -- command -v "$1")"
-            [[ -n "$cmdloc" ]] && [[ -f "$cmdloc" ]] && [[ -x "$cmdloc" ]];
-        }
-    fi
-else
-    has_binary() { /usr/bin/env which "$1" > /dev/null; }
-fi
+# if ! has_command which; then
+#     if has_command whereis && [[ -x "$(whereis whereis)" ]]; then
+#         which() { env -- whereis "$1"; [[ "$(env -- whereis "$1")" != "$1:" ]]; }
+#         has_binary() { [[ "$(env -- whereis -b "$1")" != "$1:" ]]; }
+#     else
+#         which() { env -- command -v "$1"; }
+#         has_binary() {
+#             local cmdloc="$(env -- command -v "$1")"
+#             [[ -n "$cmdloc" ]] && [[ -f "$cmdloc" ]] && [[ -x "$cmdloc" ]];
+#         }
+#     fi
+# else
+#     has_binary() { /usr/bin/env which "$1" > /dev/null; }
+# fi
 msgerr
 msgerr
 

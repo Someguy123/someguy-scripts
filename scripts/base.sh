@@ -14,6 +14,59 @@
 
 export PATH="${HOME}/.local/bin:/snap/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin:${PATH}"
 
+find-cmd() {
+    [[ -f "/usr/bin/$1" || -f "/bin/$1" || -f "/usr/sbin/$1" || -f "/sbin/$1" || -f "/usr/local/bin/$1" ]]
+}
+
+msg() {
+    echo -e "$@"
+}
+msgerr() { >&2 msg "$@"; }
+_debug() { (( SG_DEBUG )) && msgerr "$@" || true; }
+
+instx() {
+    local outx="/dev/stderr" needsudo=1
+    [[ "$1" == "-q" ]] && outx="/dev/null" && shift
+    [[ "$1" == "-u" ]] && needsudo=0 && shift
+    [[ "$1" == "-q" ]] && outx="/dev/null" && shift
+
+    if (( needsudo == 0 )) || (( EUID == 0 )); then
+        cp "$1" "$2" &> "$outx"
+        chmod +x "$2"  &> "$outx"
+    elif find-cmd sudo; then
+        sudo cp "$1" "$2" &> "$outx"
+        sudo chmod +x "$2"  &> "$outx"
+    elif find-cmd su; then
+        su -c "cp \"$1\" \"$2\"" &> "$outx"
+        su -c "chmod +x \"$2\"" &> "$outx"
+    else
+        msgerr " [!!!] Failed to find su nor sudo - cannot install '$1' to '$2'"
+        return 9
+    fi
+}
+
+if find-cmd python3 && [[ -f /tmp/findbin.py ]]; then
+    instx -q /tmp/findbin.py /usr/bin/findbin
+    if (( EUID == 0 )); then
+        ln -s /usr/bin/findbin /usr/local/bin/findbin
+        [[ ! -f /usr/local/bin/command ]] && ln -s /usr/bin/findbin /usr/local/bin/command
+        [[ ! -f /usr/local/bin/which ]] && ln -s /usr/bin/findbin /usr/local/bin/which
+    elif find-cmd sudo; then
+        sudo ln -s /usr/bin/findbin /usr/local/bin/findbin
+        [[ ! -f /usr/local/bin/command ]] && sudo ln -s /usr/bin/findbin /usr/local/bin/command
+        [[ ! -f /usr/local/bin/which ]] && sudo ln -s /usr/bin/findbin /usr/local/bin/which
+    elif find-cmd su; then
+        su -c 'ln -s /usr/bin/findbin /usr/local/bin/findbin'
+        [[ ! -f /usr/local/bin/command ]] && su -c 'ln -s /usr/bin/findbin /usr/local/bin/command'
+        [[ ! -f /usr/local/bin/which ]] && su -c 'ln -s /usr/bin/findbin /usr/local/bin/which'
+    else
+        msgerr " [!!!] Failed to find su nor sudo - cannot install /usr/bin/findbin to command/which"
+        msgerr " [!!!] Attempting alias function..."
+        command() { SELF_BIN="command" python3 /tmp/findbin.py "$@"; }
+        which() { SELF_BIN="which" python3 /tmp/findbin.py "$@"; }
+        export -f command which
+    fi
+fi
 
 # As base.sh may be compiled into a singular script, it's best to set default variables only when a main
 # function (i.e. sgs_provision) requires them. This ensures scripts appended after base.sh can set their
@@ -32,31 +85,25 @@ sgs_var_defaults() {
 
 SGBASE_LOADED='y'
 
-msg() {
-    #local clean_args
-    #clean_args=()
-    #while (( $# >= 2 )); do
-    #    grep -Eiq "red|blue|green|yellow|magenta|purple|bold" <<< "$1" || clean_args+=("$1")
-    #    shift
-    #done
-    #echo -e "${clean_args[@]}"
-    echo -e "$@"
-}
-msgerr() { >&2 msg "$@"; }
-_debug() { (( SG_DEBUG )) && msgerr "$@" || true; }
-
-
-find-cmd() {
-    [[ -f "/usr/bin/$1" || -f "/bin/$1" || -f "/usr/sbin/$1" || -f "/sbin/$1" || -f "/usr/local/bin/$1" ]]
-}
-
 has_command() { command -v "$1" > /dev/null; }
-has_binary() {
+sg_has_binary() {
     local q="$1" wi
-    if [[ -f "/usr/bin/command" || -f "/bin/command" || -f "/usr/sbin/command" || -f "/sbin/command" || -f "/usr/local/bin/command" ]]; then
+    if [[ -f "/usr/bin/findbin" ]]; then
+        /usr/bin/findbin -q "$@"
+        return $?
+    elif [[ -f "/usr/local/bin/command" ]]; then
+        /usr/local/bin/command "$@" &> /dev/null;
+        return $?
+    elif find-cmd command; then
         env -- command -v "$1" &> /dev/null;
         return $?
-    elif [[ -f "/usr/bin/whereis" || -f "/bin/whereis" || -f "/usr/sbin/whereis" || -f "/sbin/whereis" || -f "/usr/local/bin/whereis"  ]]; then
+    elif [[ -f "/usr/local/bin/which" ]]; then
+        /usr/local/bin/which "$@" &> /dev/null;
+        return $?
+    elif find-cmd which; then
+        env -- which "$@" &> /dev/null;
+        return $?
+    elif find-cmd whereis; then
         wi="$(env -- whereis "$1" &> /dev/null)"
         [[ "$wi" != "${q}:" && "$wi" != "${q}: " &&  "$wi" != "${q}:\t" ]]
         return $?
@@ -65,51 +112,56 @@ has_binary() {
         return $?
     fi
 }
+sg-has-binary() { sg_has_binary "$@"; }
+has_binary() { sg_has_binary "$@"; }
+has-binary() { sg_has_binary "$@"; }
+export -f has_binary sg_has_binary has-binary sg-has-binary
+
 if ! find-cmd sudo && [ "$EUID" -eq 0 ]; then
     sudo() { env "$@"; }
     has_sudo() { return 0; }
 else
     has_sudo() { sudo -n ls > /dev/null; }
 fi
-if ! has_binary which && ! [[ -f "/usr/local/bin/which" ]]; then
-    msgerr " !!! Creating shim which at /usr/local/bin/which !!!"
-    sudo tee /usr/local/bin/which <<"EOF"
-#!/usr/bin/env bash
-export PATH="${HOME}/.local/bin:/snap/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin:${PATH}"
-if [[ -f "/usr/bin/command" || -f "/bin/command" || -f "/usr/sbin/command" || -f "/sbin/command" || -f "/usr/local/bin/command" ]]; then
-    env -- command -v "$1" &> /dev/null;
-    exit $?
-elif [[ -f "/usr/bin/whereis" || -f "/bin/whereis" || -f "/usr/sbin/whereis" || -f "/sbin/whereis" || -f "/usr/local/bin/whereis"  ]]; then
-    wi="$(env -- whereis "$1" &> /dev/null)"
-    [[ "$wi" != "${q}:" && "$wi" != "${q}: " &&  "$wi" != "${q}:\t" ]]
-    exit $?
-else
-    command -v "$q" &> /dev/null;
-    exit $?
-fi
+# if ! has_binary which && ! [[ -f "/usr/local/bin/which" ]]; then
+#     msgerr " !!! Creating shim which at /usr/local/bin/which !!!"
+#     sudo tee /usr/local/bin/which <<"EOF"
+# #!/usr/bin/env bash
+# export PATH="${HOME}/.local/bin:/snap/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin:${PATH}"
+# if [[ -f "/usr/bin/command" || -f "/bin/command" || -f "/usr/sbin/command" || -f "/sbin/command" || -f "/usr/local/bin/command" ]]; then
+#     env -- command -v "$1" &> /dev/null;
+#     exit $?
+# elif [[ -f "/usr/bin/whereis" || -f "/bin/whereis" || -f "/usr/sbin/whereis" || -f "/sbin/whereis" || -f "/usr/local/bin/whereis"  ]]; then
+#     wi="$(env -- whereis "$1" &> /dev/null)"
+#     [[ "$wi" != "${q}:" && "$wi" != "${q}: " &&  "$wi" != "${q}:\t" ]]
+#     exit $?
+# else
+#     command -v "$q" &> /dev/null;
+#     exit $?
+# fi
 
-EOF
-    sudo chmod +x /usr/local/bin/which
-fi
+# EOF
+#     sudo chmod +x /usr/local/bin/which
+# fi
 
-if ! [[ -f "/usr/bin/command" || -f "/bin/command" || -f "/usr/sbin/command" || -f "/sbin/command" || -f "/usr/local/bin/command" ]]; then
-    sudo tee /usr/local/bin/command <<"EOF"
-q="$1"
-if [[ -f "/usr/bin/command" || -f "/bin/command" || -f "/usr/sbin/command" || -f "/sbin/command" ]]; then
-    env -- command -v "$1" &> /dev/null;
-    return $?
-elif [[ -f "/usr/bin/whereis" || -f "/bin/whereis" || -f "/usr/sbin/whereis" || -f "/sbin/whereis" || -f "/usr/local/bin/whereis"  ]]; then
-    wi="$(env -- whereis "$1" &> /dev/null)"
-    [[ "$wi" != "${q}:" && "$wi" != "${q}: " &&  "$wi" != "${q}:\t" ]]
-    return $?
-else
-    command -v "$q" &> /dev/null;
-    return $?
-fi
+# if ! [[ -f "/usr/bin/command" || -f "/bin/command" || -f "/usr/sbin/command" || -f "/sbin/command" || -f "/usr/local/bin/command" ]]; then
+#     sudo tee /usr/local/bin/command <<"EOF"
+# q="$1"
+# if [[ -f "/usr/bin/command" || -f "/bin/command" || -f "/usr/sbin/command" || -f "/sbin/command" ]]; then
+#     env -- command -v "$1" &> /dev/null;
+#     return $?
+# elif [[ -f "/usr/bin/whereis" || -f "/bin/whereis" || -f "/usr/sbin/whereis" || -f "/sbin/whereis" || -f "/usr/local/bin/whereis"  ]]; then
+#     wi="$(env -- whereis "$1" &> /dev/null)"
+#     [[ "$wi" != "${q}:" && "$wi" != "${q}: " &&  "$wi" != "${q}:\t" ]]
+#     return $?
+# else
+#     command -v "$q" &> /dev/null;
+#     return $?
+# fi
 
-EOF
-    sudo chmod +x /usr/local/bin/command
-fi
+# EOF
+#     sudo chmod +x /usr/local/bin/command
+# fi
 
 # if ! has_command which; then
 #     if has_command whereis && [[ -x "$(whereis whereis)" ]]; then
@@ -154,25 +206,25 @@ PKG_MGR_UPDATED=0
 
 if [[ -z "$PKG_INSTALL" || -z "$BASE_OS" ]]; then
     [[ -f /etc/debian_version ]] && BASE_OS="debian"
-    has_binary apt-get && has_binary dpkg && BASE_OS="debian"
+    sg-has-binary apt-get && sg-has-binary dpkg && BASE_OS="debian"
     [[ -f /etc/redhat-release ]] && BASE_OS="rhel"
     [[ -f /etc/oracle-release ]] && BASE_OS="rhel"
-    { has_binary yum || has_binary dnf; } && BASE_OS="rhel"
-    [[ -f "/etc/arch-release" ]] && has_binary pacman && BASE_OS="arch"
-    [[ -f "/etc/gentoo-release" ]] && has_binary emerge && BASE_OS="gentoo"
-    [[ -f "/etc/alpine-release" ]] && has_binary apk && BASE_OS="alpine"
+    { sg-has-binary yum || sg-has-binary dnf; } && BASE_OS="rhel"
+    [[ -f "/etc/arch-release" ]] && sg-has-binary pacman && BASE_OS="arch"
+    [[ -f "/etc/gentoo-release" ]] && sg-has-binary emerge && BASE_OS="gentoo"
+    [[ -f "/etc/alpine-release" ]] && sg-has-binary apk && BASE_OS="alpine"
 fi
 
 if [[ -z "$PKG_INSTALL" || -z "$PKG_UPDATE" ]]; then
     case "$BASE_OS" in
         debian|deb|ubuntu|Ubuntu|ubu|mint|Mint|Kali|"Kali Linux"|"Linux Mint"|"Ubuntu Linux")
             BASE_PKG_MGR="apt-get"  FB_PKG_MGR="apt"
-            has_binary "$BASE_PKG_MGR" || BASE_PKG_MGR="$FB_PKG_MGR"
+            sg-has-binary "$BASE_PKG_MGR" || BASE_PKG_MGR="$FB_PKG_MGR"
             PKG_UPDATE="$BASE_PKG_MGR update -qy" PKG_INSTALL="$BASE_PKG_MGR install -qy" PKG_INSTALLED="dpkg -s"
             ;;
         rhel|rh|RHEL|RH|redhat|RedHat|oracle|Oracle|"Oracle Linux"fedora|centos|Fedora|CentOS|"RedHat Enterprise Linux")
             BASE_PKG_MGR="dnf" FB_PKG_MGR="yum"
-            has_binary "$BASE_PKG_MGR" || BASE_PKG_MGR="$FB_PKG_MGR"
+            sg-has-binary "$BASE_PKG_MGR" || BASE_PKG_MGR="$FB_PKG_MGR"
             PKG_UPDATE="$BASE_PKG_MGR makecache -y" PKG_INSTALL="$BASE_PKG_MGR install -y" PKG_INSTALLED="rh-has-pkg"
             ;;
         arch|archlinux|Arch|ArchLinux|"Arch Linux"|"arch linux")
@@ -315,21 +367,9 @@ pkg_not_found() {
     fi
     local cmd="$1" pkg="$2" _new_pkg=""
     _debug yellow " [pkg_not_found] Checking if we have binary: $cmd (pkg: ${pkg})"
-    if ! has_binary "$cmd"; then
+    if ! sg-has-binary "$cmd"; then
         _debug yellow " [pkg_not_found] Got falsey from has_binary '$cmd'"
-        msg yellow "WARNING: Command $cmd was not found. installing now..."     
-        #if is-rhel; then
-        #    _new_pkg="$(get-rhel-equiv "$pkg")"
-        #    _debug yellow " --> Found Redhat-based equivalent package for '${pkg}'. Replacing package name with: $_new_pkg"
-        #    pkg="$_new_pkg"
-        #fi
-        #if ! (( PKG_MGR_UPDATED )); then
-        #    _debug green " --> Updating repos for package manager using update command: $PKG_MGR_UPDATE"
-        #    sudo sh -c "${PKG_MGR_UPDATE}"
-        #    PKG_MGR_UPDATED=1
-        #fi
-        #_debug green " --> Installing package(s) '${pkg}' using package manager installer: $PKG_MGR_INSTALLER"
-        #sudo sh -c "${PKG_MGR_INSTALL} ${pkg}"
+        msg yellow "WARNING: Command $cmd was not found. installing now..."
         install-pkg "$pkg"
     else
         _debug green " [pkg_not_found] We appear to already have the binary: '$cmd'"
@@ -343,7 +383,7 @@ autopkg() {
     missingpkgs=() cmdlist=("$@")
     
     for xc in "${cmdlist[@]}"; do
-        if ! has_binary "$cmd"; then
+        if ! sg-has-binary "$xc"; then
             msg yellow "WARNING: Command $xc was not found. Adding to package installation queue ..."
             missingpkgs+=("$xc")
         else
@@ -374,35 +414,11 @@ if [ -z ${S_CORE_VER+x} ]; then
     [[ -d "${HOME}/.pv-shcore" ]] && . "${HOME}/.pv-shcore/load.sh" || . "/usr/local/share/pv-shcore/load.sh" || _sc_fail
 fi
 
-has_binary() {
-    local q="$1" wi
-    if [[ -f "/usr/bin/command" || -f "/bin/command" || -f "/usr/sbin/command" || -f "/sbin/command" || -f "/usr/local/bin/command" ]]; then
-        env -- command -v "$1" &> /dev/null;
-        return $?
-    elif [[ -f "/usr/bin/whereis" || -f "/bin/whereis" || -f "/usr/sbin/whereis" || -f "/sbin/whereis" || -f "/usr/local/bin/whereis"  ]]; then
-        wi="$(env -- whereis "$1" &> /dev/null)"
-        [[ "$wi" != "${q}:" && "$wi" != "${q}: " &&  "$wi" != "${q}:\t" ]]
-        return $?
-    else
-        command -v "$q" &> /dev/null;
-        return $?
-    fi
-}
+sg-has-binary() { sg_has_binary "$@"; }
+has_binary() { sg_has_binary "$@"; }
+has-binary() { sg_has_binary "$@"; }
+export -f has_binary sg_has_binary has-binary sg-has-binary
 
-# if ! has_command which; then
-#     if has_command whereis && [[ -x "$(whereis whereis)" ]]; then
-#         which() { env -- whereis "$1"; [[ "$(env -- whereis "$1")" != "$1:" ]]; }
-#         has_binary() { [[ "$(env -- whereis -b "$1")" != "$1:" ]]; }
-#     else
-#         which() { env -- command -v "$1"; }
-#         has_binary() {
-#             local cmdloc="$(env -- command -v "$1")"
-#             [[ -n "$cmdloc" ]] && [[ -f "$cmdloc" ]] && [[ -x "$cmdloc" ]];
-#         }
-#     fi
-# else
-#     has_binary() { /usr/bin/env which "$1" > /dev/null; }
-# fi
 
 sg_copyright() {
     msg "${_LN}"
