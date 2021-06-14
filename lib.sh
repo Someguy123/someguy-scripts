@@ -640,9 +640,9 @@ _copy_zshrc() {
     local dest_fld
     (($#>0)) && dest_fld="$1" || dest_fld="$HOME"
     # If the 'zsh' binary exists, and the dest folder contains a .zshrc then we don't need to do anything.
-    if sg-has-binary zsh && [[ -f "$dest_fld/.zshrc" ]]; then return 0; fi
+    if find-cmd zsh && [[ -f "$dest_fld/.zshrc" ]]; then return 0; fi
     msg
-    if ! sg-has-binary zsh; then
+    if ! find-cmd zsh; then
         msgerr yellow " [!!!] WARNING: Cannot find 'zsh' binary. Not installing skeleton zshrc file.\n"
         return 2
     fi
