@@ -14,7 +14,14 @@
 # ------------------------------
 
 : ${SG_DEBUG=0}
-export SG_SCRIPTS_VERSION='2.0.0'
+: ${XDEBUG="0"}
+export XDEBUG
+if (( XDEBUG )); then
+    # Extra debugging - Print bash commands and their arguments as they are executed.
+    set -x
+fi
+
+export SG_SCRIPTS_VERSION='2.6.0'
 
 msg() {
     echo -e "$@"
@@ -42,62 +49,106 @@ instx() {
     [[ "$1" == "-u" ]] && needsudo=0 && shift
     [[ "$1" == "-q" ]] && outx="/dev/null" && shift
 
-    if (( needsudo == 0 )) || (( EUID == 0 )); then
+    if (( needsudo )); then
+        sg-sudo cp "$1" "$2" &> "$outx"
+        sg-sudo chmod +x "$2"  &> "$outx"
+    else
         cp "$1" "$2" &> "$outx"
         chmod +x "$2"  &> "$outx"
-    elif find-cmd sudo; then
-        sudo cp "$1" "$2" &> "$outx"
-        sudo chmod +x "$2"  &> "$outx"
-    elif find-cmd su; then
-        su -c "cp \"$1\" \"$2\"" &> "$outx"
-        su -c "chmod +x \"$2\"" &> "$outx"
-    else
-        msgerr " [!!!] Failed to find su nor sudo - cannot install '$1' to '$2'"
-        return 9
     fi
 }
 
-if [[ -z ${_SG_COMPILING+x} ]] && ! (( _SG_COMPILING )); then
-    if find-cmd python3 && [[ -f "${LIB_DIR}/scripts/findbin.py" ]]; then
-        instx -q "${LIB_DIR}/scripts/findbin.py" /usr/bin/findbin
-        if (( EUID == 0 )); then
-            ln -s /usr/bin/findbin /usr/local/bin/findbin
-            [[ ! -f /usr/local/bin/command ]] && ln -s /usr/bin/findbin /usr/local/bin/command
-            [[ ! -f /usr/local/bin/which ]] && ln -s /usr/bin/findbin /usr/local/bin/which
-        elif find-cmd sudo; then
-            sudo ln -s /usr/bin/findbin /usr/local/bin/findbin
-            [[ ! -f /usr/local/bin/command ]] && sudo ln -s /usr/bin/findbin /usr/local/bin/command
-            [[ ! -f /usr/local/bin/which ]] && sudo ln -s /usr/bin/findbin /usr/local/bin/which
-        elif find-cmd su; then
-            su -c 'ln -s /usr/bin/findbin /usr/local/bin/findbin'
-            [[ ! -f /usr/local/bin/command ]] && su -c 'ln -s /usr/bin/findbin /usr/local/bin/command'
-            [[ ! -f /usr/local/bin/which ]] && su -c 'ln -s /usr/bin/findbin /usr/local/bin/which'
-        else
-            msgerr " [!!!] Failed to find su nor sudo - cannot install /usr/bin/findbin to command/which"
-            msgerr " [!!!] Attempting alias function..."
-            command() { SELF_BIN="command" python3 "${LIB_DIR}/scripts/findbin.py" "$@"; }
-            which() { SELF_BIN="which" python3 "${LIB_DIR}/scripts/findbin.py" "$@"; }
-            export -f command which
-        fi
-    fi
-fi
+
 
 has_command() { command -v "$1" > /dev/null; }
 
-# if ! has_command which; then
-#     if has_command whereis && [[ -x "$(whereis whereis)" ]]; then
-#         which() { env -- whereis "$1"; [[ "$(env -- whereis "$1")" != "$1:" ]]; }
-#         has_binary() { [[ "$(env -- whereis -b "$1")" != "$1:" ]]; }
-#     else
-#         which() { env -- command -v "$1"; }
-#         has_binary() {
-#             local cmdloc="$(env -- command -v "$1")"
-#             [[ -n "$cmdloc" ]] && [[ -f "$cmdloc" ]] && [[ -x "$cmdloc" ]];
-#         }
-#     fi
-# else
-#     has_binary() { /usr/bin/env which "$1" > /dev/null; }
-# fi
+sg_has_binary() {
+    local q="$1" wi
+    if [[ -f "/usr/bin/findbin" ]]; then
+        /usr/bin/findbin -q "$@"
+        return $?
+    elif [[ -f "/usr/local/bin/command" ]]; then
+        /usr/local/bin/command "$@" &> /dev/null;
+        return $?
+    elif find-cmd command; then
+        env -- command -v "$1" &> /dev/null;
+        return $?
+    elif [[ -f "/usr/local/bin/which" ]]; then
+        /usr/local/bin/which "$@" &> /dev/null;
+        return $?
+    elif find-cmd which; then
+        env -- which "$@" &> /dev/null;
+        return $?
+    elif find-cmd whereis; then
+        wi="$(env -- whereis "$1" &> /dev/null)"
+        [[ "$wi" != "${q}:" && "$wi" != "${q}: " &&  "$wi" != "${q}:\t" ]]
+        return $?
+    else
+        command -v "$q" &> /dev/null;
+        return $?
+    fi
+}
+sg-has-binary() { sg_has_binary "$@"; }
+has_binary() { sg_has_binary "$@"; }
+has-binary() { sg_has_binary "$@"; }
+export -f has_binary sg_has_binary has-binary sg-has-binary
+
+sg-sudo() {
+    if (( EUID == 0 )); then
+        _debug "EUID is 0 (root). Using eval to evaluate the passed arguments directly: $*"
+        # Iterate over args and remove any switch/flag arguments for sudo, until the first
+        # arg which doesn't start with a dash.
+        while (( $# > 0 )); do
+            [[ "$1" == "--" ]] && break
+            grep -Eq '^\-' <<< "$1" && shift || break
+        done
+            
+        eval "$@"
+        return $?
+    else
+        if sg-has-binary sudo; then
+            _debug "User is not root, but found sudo. Running sudo with args: $*"
+            if [[ -f "/usr/bin/findbin" ]]; then
+                local sdbin="$(/usr/bin/findbin sudo)"
+                _debug "Found direct path to sudo binary using findbin: $sdbin"
+                "$sdbin" -- "$@"
+                return $?
+            else
+                _debug "findbin not available. Using env to run sudo: env sudo -- $*"
+                env sudo -- "$@"
+                return $?
+            fi
+        elif sg-has-binary su; then
+            _debug "sudo not available but su is. using su: su -c \"$(printf '%q ' "$@")\""
+            # Iterate over args and remove any switch/flag arguments for sudo, until the first
+            # arg which doesn't start with a dash.
+            while (( $# > 0 )); do
+                [[ "$1" == "--" ]] && break
+                grep -Eq '^\-' <<< "$1" && shift || break
+            done
+            su -c "$(printf '%q ' "$@")"
+            return $?
+        else
+            msgerr " [!!!] ERROR: Neither sudo nor su are available, and you're not root. Cannot run: $*"
+            return 9
+        fi
+    fi
+}
+xsudo() { sg-sudo "$@"; }
+unalias sudo &> /dev/null
+unset sudo &> /dev/null
+sudo() { sg-sudo "$@"; }
+
+export -f sg-sudo xsudo sudo
+
+if [[ -z ${_SG_COMPILING+x} ]] && ! (( _SG_COMPILING )); then
+    if find-cmd python3 && [[ -f /tmp/findbin.py ]]; then
+        instx -q /tmp/findbin.py /usr/bin/findbin
+        sg-sudo ln -s /usr/bin/findbin /usr/local/bin/findbin
+        [[ ! -f /usr/local/bin/command ]] && sg-sudo ln -s /usr/bin/findbin /usr/local/bin/command
+        [[ ! -f /usr/local/bin/which ]] && sg-sudo ln -s /usr/bin/findbin /usr/local/bin/which
+    fi
+fi
 
 OS="$(uname -s)"
 : ${BASE_OS=""}
@@ -116,25 +167,25 @@ PKG_MGR_UPDATED=0
 
 if [[ -z "$PKG_INSTALL" || -z "$BASE_OS" ]]; then
     [[ -f /etc/debian_version ]] && BASE_OS="debian"
-    has_binary apt-get && has_binary dpkg && BASE_OS="debian"
+    sg-has-binary apt-get && sg-has-binary dpkg && BASE_OS="debian"
     [[ -f /etc/redhat-release ]] && BASE_OS="rhel"
     [[ -f /etc/oracle-release ]] && BASE_OS="rhel"
-    { has_binary yum || has_binary dnf; } && BASE_OS="rhel"
-    [[ -f "/etc/arch-release" ]] && has_binary pacman && BASE_OS="arch"
-    [[ -f "/etc/gentoo-release" ]] && has_binary emerge && BASE_OS="gentoo"
-    [[ -f "/etc/alpine-release" ]] && has_binary apk && BASE_OS="alpine"
+    { sg-has-binary yum || sg-has-binary dnf; } && BASE_OS="rhel"
+    [[ -f "/etc/arch-release" ]] && sg-has-binary pacman && BASE_OS="arch"
+    [[ -f "/etc/gentoo-release" ]] && sg-has-binary emerge && BASE_OS="gentoo"
+    [[ -f "/etc/alpine-release" ]] && sg-has-binary apk && BASE_OS="alpine"
 fi
 
 if [[ -z "$PKG_INSTALL" || -z "$PKG_UPDATE" ]]; then
     case "$BASE_OS" in
         debian|deb|ubuntu|Ubuntu|ubu|mint|Mint|Kali|"Kali Linux"|"Linux Mint"|"Ubuntu Linux")
             BASE_PKG_MGR="apt-get"  FB_PKG_MGR="apt"
-            has_binary "$BASE_PKG_MGR" || BASE_PKG_MGR="$FB_PKG_MGR"
+            sg-has-binary "$BASE_PKG_MGR" || BASE_PKG_MGR="$FB_PKG_MGR"
             PKG_UPDATE="$BASE_PKG_MGR update -qy" PKG_INSTALL="$BASE_PKG_MGR install -qy" PKG_INSTALLED="dpkg -s"
             ;;
         rhel|rh|RHEL|RH|redhat|RedHat|oracle|Oracle|"Oracle Linux"fedora|centos|Fedora|CentOS|"RedHat Enterprise Linux")
             BASE_PKG_MGR="dnf" FB_PKG_MGR="yum"
-            has_binary "$BASE_PKG_MGR" || BASE_PKG_MGR="$FB_PKG_MGR"
+            sg-has-binary "$BASE_PKG_MGR" || BASE_PKG_MGR="$FB_PKG_MGR"
             PKG_UPDATE="$BASE_PKG_MGR makecache -y" PKG_INSTALL="$BASE_PKG_MGR install -y" PKG_INSTALLED="rh-has-pkg"
             ;;
         arch|archlinux|Arch|ArchLinux|"Arch Linux"|"arch linux")
@@ -178,7 +229,7 @@ get-rhel-equiv() {
         pname="$(sed -E 's/^python3\./python3/' <<< "$pname")"
         sedmatched=1
     fi
-    if grep -Eq -- '^(python3-venv|python3(\.[0-9]+)-venv)$' <<< "$pname"; then
+    if grep -Eq -- '-venv$' <<< "$pname"; then
         pname="$(sed -E 's/\-venv$/-virtualenv/' <<< "$pname")"
         sedmatched=1
     fi
@@ -207,15 +258,15 @@ get-rhel-equiv() {
 
 # If we don't have sudo, but the user is root, then just create a pass-thru 
 # sudo function that simply runs the passed commands via env.
-if ! has_binary sudo && [ "$EUID" -eq 0 ]; then
-    sudo() { env -- "$@"; }
+if ! sg-has-binary sudo && [ "$EUID" -eq 0 ]; then
+    # sudo() { env -- "$@"; }
     has_sudo() { return 0; }
 else
     has_sudo() { sudo -n ls > /dev/null; }
 fi
 
 pkg-installed() {
-    sudo "$PKG_INSTALLED" "$@" &> /dev/null
+    sg-sudo "$PKG_INSTALLED" "$@" &> /dev/null
 }
 
 install-pkg() {
@@ -228,13 +279,13 @@ install-pkg() {
     _debug yellow " [install-pkg] BASE_OS: '$BASE_OS' | BASE_PKG_MGR: $BASE_PKG_MGR | PKG_INSTALL: $PKG_INSTALL | PKG_UPDATE: $PKG_UPDATE | pkglst: ${pkglst[*]}"
     msgerr cyan " >>> Installing packages: ${pkglst[*]} ..."
     if [[ "$BASE_OS" == "debian" && "$APT_UPDATED" == "n" ]]; then
-        _debug yellow " [install-pkg] Running debian package manager update command: sudo $BASE_PKG_MGR update -qy"
+        _debug yellow " [install-pkg] Running debian package manager update command: sg-sudo $BASE_PKG_MGR update -qy"
         msgerr bold blue "     > Updating apt repository data, please wait..."
-        sudo "$BASE_PKG_MGR" update -qy &> /dev/null
+        sg-sudo "$BASE_PKG_MGR" update -qy &> /dev/null
         APT_UPDATED="y" PKG_MGR_UPDATED=1
     elif (( PKG_MGR_UPDATED == 0 )) && [[ -n "$PKG_UPDATE" ]]; then
-        _debug yellow " [install-pkg] Running OS '$BASE_OS' package manager update command: sudo $PKG_UPDATE"
-        sudo $PKG_UPDATE
+        _debug yellow " [install-pkg] Running OS '$BASE_OS' package manager update command: sg-sudo $PKG_UPDATE"
+        sg-sudo $PKG_UPDATE
         PKG_MGR_UPDATED=1
     fi
     if is-rhel; then
@@ -251,7 +302,8 @@ install-pkg() {
         _new_pkgs=()
         _debug yellow " ---> Stripping any packages that are already installed using command: $PKG_INSTALLED"
         for p in "${pkglst[@]}"; do
-            pkg-installed "$p" && continue
+            pkg-installed "$p" && _debug yellow " ------> Package '$p' is already installed. removing from list." continue
+            _debug yellow " ------> Package '$p' not installed. adding to list."
             _new_pkgs+=("$p")
         done
         pkglst=("${_new_pkgs[@]}")
@@ -259,12 +311,13 @@ install-pkg() {
 
     msgerr bold blue "     > Installing various packages, please wait..."
     if [[ "$BASE_OS" == "debian" ]]; then
-        _DEB_EX_ARGS=("-o" "Dpkg::Options::='--force-confold'" "-o" "Dpkg::Use-Pty=0" "--force-yes" "install" "-qq" "-y")
-        _debug yellow " [install-pkg] OS appears to be debian, using $BASE_PKG_MGR - sudo $BASE_PKG_MGR ${_DEB_EX_ARGS[*]} ${pkglst[*]}"
-        DEBIAN_FRONTEND=noninteractive sudo "$BASE_PKG_MGR" "${_DEB_EX_ARGS[@]}" "${pkglst[@]}" &>/dev/null
+        # _DEB_EX_ARGS=("-o" "Dpkg::Options::='--force-confold'" "-o" "Dpkg::Use-Pty=0" "--force-yes" "install" "-qq" "-y")
+        _DEB_EX_ARGS=("install" "-q" "-y")
+        _debug yellow " [install-pkg] OS appears to be debian, using $BASE_PKG_MGR - sg-sudo $BASE_PKG_MGR ${_DEB_EX_ARGS[*]} ${pkglst[*]}"
+        DEBIAN_FRONTEND=noninteractive sg-sudo "$BASE_PKG_MGR" "${_DEB_EX_ARGS[@]}" "${pkglst[@]}"
     elif [[ -n "$PKG_INSTALL" ]]; then
-        _debug yellow " [install-pkg] Running package manager install command: sudo $PKG_INSTALL ${pkglst[*]}"
-        if ! sudo $PKG_INSTALL "${pkglst[@]}" ; then
+        _debug yellow " [install-pkg] Running package manager install command: sg-sudo $PKG_INSTALL ${pkglst[*]}"
+        if ! sg-sudo $PKG_INSTALL "${pkglst[@]}" ; then
             if [[ -n "$PKG_INSTALLED" ]]; then
                 _new_pkgs=()
                 _debug yellow " ---> Stripping any packages that are already installed using command: $PKG_INSTALLED"
@@ -275,8 +328,8 @@ install-pkg() {
                 pkglst=("${_new_pkgs[@]}")
             fi
             for pk in "${pkglst[@]}"; do
-                _debug yellow " [install-pkg] Installing individual package $pk - running package manager install command: sudo $PKG_INSTALL ${pk}"
-                sudo $PKG_INSTALL "$pk"
+                _debug yellow " [install-pkg] Installing individual package $pk - running package manager install command: sg-sudo $PKG_INSTALL ${pk}"
+                sg-sudo $PKG_INSTALL "$pk"
             done
         fi
     fi
@@ -293,8 +346,8 @@ pkg_not_found() {
     fi
     local cmd="$1" pkg="$2" _new_pkg=""
     _debug yellow " [pkg_not_found] Checking if we have binary: $cmd (pkg: ${pkg})"
-    if ! has_binary "$cmd"; then
-        _debug yellow " [pkg_not_found] Got falsey from has_binary '$cmd'"
+    if ! sg-has-binary "$cmd"; then
+        _debug yellow " [pkg_not_found] Got falsey from sg-has-binary '$cmd'"
         msgerr yellow "WARNING: Command $cmd was not found. installing now..."
         install-pkg "$pkg"
     else
@@ -312,7 +365,7 @@ autopkg() {
         return 2
     fi
     for xc in "${cmdlist[@]}"; do
-        if ! has_binary "$xc"; then
+        if ! sg-has-binary "$xc"; then
             msgerr yellow "WARNING: Command $xc was not found. Adding to package installation queue ..."
             missingpkgs+=("$xc")
         else
@@ -349,20 +402,18 @@ if [ -z ${S_CORE_VER+x} ]; then
     [[ -f "${_lcl_shc}" ]] && source "${_lcl_shc}" || source "$_hm_shc" || source "$_glb_shc" || _sc_fail
 fi
 
-# if ! has_command which; then
-#     if has_command whereis && [[ -x "$(whereis whereis)" ]]; then
-#         which() { env -- whereis "$1"; [[ "$(env -- whereis "$1")" != "$1:" ]]; }
-#         has_binary() { [[ "$(env -- whereis -b "$1")" != "$1:" ]]; }
-#     else
-#         which() { env -- command -v "$1"; }
-#         has_binary() {
-#             local cmdloc="$(env -- command -v "$1")"
-#             [[ -n "$cmdloc" ]] && [[ -f "$cmdloc" ]] && [[ -x "$cmdloc" ]];
-#         }
-#     fi
-# else
-#     has_binary() { /usr/bin/env which "$1" > /dev/null; }
-# fi
+unalias sudo &> /dev/null
+unset sudo &> /dev/null
+sudo() { sg-sudo "$@"; }
+
+if ! sg-has-binary sudo && [ "$EUID" -eq 0 ]; then
+    # sudo() { env -- "$@"; }
+    has_sudo() { return 0; }
+else
+    # unset sudo
+    has_sudo() { sudo -n ls > /dev/null; }
+fi
+
 msgerr
 msgerr
 
@@ -427,9 +478,9 @@ gnusafe || return 1 2>/dev/null || exit 1
 
 install-epel-fedora() {
     msgerr bold cyan " >>> Installing Fedora EPEL from URL: $EPEL_URL_FEDORA"
-    sudo $PKG_MGR_INSTALL "$EPEL_URL_FEDORA" 
+    sg-sudo $PKG_MGR_INSTALL "$EPEL_URL_FEDORA" 
     msgerr cyan " -----> ... Updating repo cache using: $PKG_MGR_UPDATE  ..."
-    sudo $PKG_MGR_UPDATE
+    sg-sudo $PKG_MGR_UPDATE
 }
 install-epel-rhel() {
     msgerr bold cyan " >>> Installing EPEL for Red Hat Enterprise Linux (RHEL)"
@@ -440,7 +491,7 @@ install-epel-rhel() {
 install-epel-oracle() {
     msgerr bold cyan " >>> Installing EPEL for Oracle Linux ${EPEL_ORACLE_VERSION}"
     msgerr cyan " -----> Creating EPEL repo file at: $EPEL_ORACLE_FILE"
-    sudo tee "/etc/yum.repos.d/ol${EPEL_ORACLE_VERSION}-epel.repo" <<EOF
+    sg-sudo tee "/etc/yum.repos.d/ol${EPEL_ORACLE_VERSION}-epel.repo" <<EOF
 [ol${EPEL_ORACLE_VERSION}_developer_EPEL]
 name= Oracle Linux \$releasever EPEL (\$basearch)
 baseurl=https://yum.oracle.com/repo/OracleLinux/OL${EPEL_ORACLE_VERSION}/developer/EPEL/\$basearch/
@@ -450,7 +501,7 @@ enabled=1
 
 EOF
     msgerr cyan " -----> ... Updating repo cache using: $PKG_MGR_UPDATE  ..."
-    sudo $PKG_MGR_UPDATE
+    sg-sudo $PKG_MGR_UPDATE
     install-epel-fedora
     msgerr bold green " [+++] Finished installing EPEL for Oracle Linux"
 }
@@ -461,9 +512,9 @@ install-epel-centos() {
         msgerr bold yellow " [!!!] Skipping. It appears that 'epel-release' is already installed - not attempting to install again."
     else
         msgerr cyan " -----> ... Updating repo cache using: $PKG_MGR_UPDATE  ..."
-        sudo $PKG_MGR_UPDATE
+        sg-sudo $PKG_MGR_UPDATE
         msgerr cyan " -----> Installing EPEL using: $PKG_MGR_INSTALL epel-release"
-        sudo $PKG_MGR_INSTALL epel-release
+        sg-sudo $PKG_MGR_INSTALL epel-release
         _ret=$?
         if (( _ret )); then
             msgerr bold red " [!!!] ERROR: Something went wrong while installing EPEL from yum/dnf."
@@ -572,9 +623,9 @@ _copy_zshrc() {
     local dest_fld
     (($#>0)) && dest_fld="$1" || dest_fld="$HOME"
     # If the 'zsh' binary exists, and the dest folder contains a .zshrc then we don't need to do anything.
-    if has_binary zsh && [[ -f "$dest_fld/.zshrc" ]]; then return 0; fi
+    if sg-has-binary zsh && [[ -f "$dest_fld/.zshrc" ]]; then return 0; fi
     msg
-    if ! has_binary zsh; then
+    if ! sg-has-binary zsh; then
         msgerr yellow " [!!!] WARNING: Cannot find 'zsh' binary. Not installing skeleton zshrc file.\n"
         return 2
     fi
@@ -585,10 +636,10 @@ _copy_zshrc() {
         if can_write "$dest_fld" > /dev/null; then
             cp -nv /etc/skel/.zshrc "$dest_fld/.zshrc"
         elif has_sudo; then
-            msgerr yellow " [?] We don't seem to have write permission to '$dest_fld'... Trying sudo."
-            sudo cp -nv /etc/skel/.zshrc "$dest_fld/.zshrc"
+            msgerr yellow " [?] We don't seem to have write permission to '$dest_fld'... Trying sg-sudo."
+            sg-sudo cp -nv /etc/skel/.zshrc "$dest_fld/.zshrc"
         else
-            msgerr red " [!!!] ERROR. Cannot write to folder '$dest_fld' and sudo is not installed / not passwordless."
+            msgerr red " [!!!] ERROR. Cannot write to folder '$dest_fld' and sg-sudo is not installed / not passwordless."
             return 3
         fi
         msg green " [+++] Done.\n"
@@ -655,7 +706,7 @@ get_home() {
 change_shell() {
     local sh_user TEST_CURRENT_SHELL
 
-    if ! has_binary zsh; then
+    if ! sg-has-binary zsh; then
         msgerr bold red "ERROR! Cannot change shell as 'zsh' was not found.\n"
         return 1
     fi
@@ -676,7 +727,7 @@ change_shell() {
 
     if hash chsh >/dev/null 2>&1; then
         msg cyan " >> Changing shell for user ${BOLD}'${sh_user}'${RESET}${CYAN} to zsh"
-        sudo chsh -s $(grep /zsh$ /etc/shells | tail -1) "$sh_user"
+        sg-sudo chsh -s $(grep /zsh$ /etc/shells | tail -1) "$sh_user"
         msg green " +++ Done."
     # Else, suggest the user do so manually.
     else
@@ -719,12 +770,12 @@ install_omz_themes() {
     fi
     if [ -d "/etc/oh-my-zsh" ]; then
         msg cyan " >>> Installing extra oh-my-zsh themes into /etc/oh-my-zsh"
-        [[ ! -d "/etc/oh-my-zsh/custom/themes" ]] && sudo mkdir -p "/etc/oh-my-zsh/custom/themes" || true
-        sudo sexy-copy -r "${LIB_DIR}/omz_themes/" "/etc/oh-my-zsh/custom/themes/"
+        [[ ! -d "/etc/oh-my-zsh/custom/themes" ]] && sg-sudo mkdir -p "/etc/oh-my-zsh/custom/themes" || true
+        sg-sudo sexy-copy -r "${LIB_DIR}/omz_themes/" "/etc/oh-my-zsh/custom/themes/"
         _ret=$?
         if (( _ret )); then
             msg cyan " !!! sexy-copy failed. trying rsync..."
-            sudo rsync -avh --progress "${LIB_DIR}/omz_themes/" "/etc/oh-my-zsh/custom/themes/"
+            sg-sudo rsync -avh --progress "${LIB_DIR}/omz_themes/" "/etc/oh-my-zsh/custom/themes/"
         fi
     fi
 }
@@ -867,7 +918,7 @@ install_confs() {
     rsync --backup --suffix="-$(date +%Y-%m-%d)" --backup-dir "$HOME/.backups/vim/" -av "$LIB_DIR/extras/vim/" "$HOME/.vim/"
     if [[ -f /etc/zsh_command_not_found ]]; then
         echo "${YELLOW} -> Removing --no-failure-msg from /etc/zsh_command_not_found to prevent a blank message when a command is not found"
-        sudo sed -i 's/--no-failure-msg //' /etc/zsh_command_not_found
+        sg-sudo sed -i 's/--no-failure-msg //' /etc/zsh_command_not_found
     else
         echo "${YELLOW} !! Warning !! /etc/zsh_command_not_found was not found. You may want to edit it manually after zsh is launched."
         echo "           You should remove '--no-failure-msg' otherwise you will get a blank message when a command is not found${RESET}"
@@ -883,12 +934,12 @@ harden() {
     read -p "${BLUE}Do you want to randomize the SSH port? (y/n)${RESET} > " chport
     if [[ "$chport" == "y" ]]; then
         export SSH_PORT=$(( ( RANDOM % 16383 )  + 49152 )) # random port for ssh
-        sudo sed -i "/Port 22/c\Port ${SSH_PORT}" /etc/ssh/sshd_config
+        sg-sudo sed -i "/Port 22/c\Port ${SSH_PORT}" /etc/ssh/sshd_config
         echo SSH PORT: $SSH_PORT
     fi
     read -p "${BLUE}Do you want to turn off password auth? (y/n)${RESET} > " nopass
     if [[ "$nopass" == "y" ]]; then
-        sudo sed -i "/PasswordAuthentication yes/c\PasswordAuthentication no" /etc/ssh/sshd_config
+        sg-sudo sed -i "/PasswordAuthentication yes/c\PasswordAuthentication no" /etc/ssh/sshd_config
         echo "${YELLOW}Password authentication disabled. Please make sure you have a key in ~/.ssh/authorized_keys${RESET}"
     fi
     echo "Here are your currently installed SSH keys:"
@@ -896,11 +947,11 @@ harden() {
     echo "${BLUE}${BOLD} $HOME/.ssh/authorized_keys:${RESET}"
     cat ~/.ssh/authorized_keys
     echo "${BLUE}${BOLD} /root/.ssh/authorized_keys:${RESET}"
-    sudo cat /root/.ssh/authorized_keys
+    sg-sudo cat /root/.ssh/authorized_keys
     read -p "${BLUE}Do you want to restart SSH? (y/n)${RESET} > " rstssh
     if [[ "$rstssh" == "y" ]]; then
         echo "${YELLOW}Restarting SSH...${RESET}"
-        sudo systemctl restart ssh
+        sg-sudo systemctl restart ssh
         echo "${GREEN}Done! Please make sure you can log in on port ${SSH_PORT} ${RESET}"
     fi
 
@@ -926,7 +977,7 @@ install_essential() {
     if [[ "$pipinst" == "y" ]]; then
         # Upgrade pip
         msg blue "     > Upgrading Python3 pip..."
-        sudo -H pip3 install -U pip
+        sg-sudo -H pip3 install -U pip
     fi
     msg bold green " [+++] Finished installing / updating essential packages.\n\n"
 
@@ -940,9 +991,9 @@ fix_locale() {
         echo "${CYAN} >> Making sure the 'locales' package is installed...${RESET}"
         install-pkg locales &>/dev/null
         echo "${CYAN} >> Removing /etc/default/locale${RESET}"
-        sudo rm /etc/default/locale
+        sg-sudo rm /etc/default/locale
         echo "${CYAN} >> Generating /etc/default/locale${RESET}"
-        cat << EOF | sudo tee /etc/default/locale
+        cat << EOF | sg-sudo tee /etc/default/locale
 LANGUAGE=en_US.UTF-8
 LANG=en_US.UTF-8
 LC_ALL=en_US.UTF-8
@@ -952,10 +1003,10 @@ EOF
         echo "${CYAN} >> Enabling locales in /etc/locale.gen specified in ENABLE_LOCALES  ${RESET}"
         for l in "${ENABLE_LOCALES[@]}"; do
             echo "${CYAN}     ... Uncommenting locales starting with $l ${RESET}"
-            sudo sed -i "/^#.* ${l}.*/s/^# //g" /etc/locale.gen
+            sg-sudo sed -i "/^#.* ${l}.*/s/^# //g" /etc/locale.gen
         done
         echo "${CYAN} >> Re-generating locale files ${RESET}"
-        sudo locale-gen
+        sg-sudo locale-gen
         source /etc/default/locale   # Load the locale file to correct the current locale env vars.
         echo "${GREEN}${BOLD}Finished. Your locale should be corrected now.${RESET}"
         echo "You may wish to restart your shell, or set the below variables in your existing session:"
@@ -987,23 +1038,23 @@ install_global() {
         [[ $IS_FRESH == "n" ]] && read -p "${YELLOW}Skip all warnings and overwrite WITHOUT asking? (y/N)${RESET} > " instovr
         [[ "$instovr" == "y" ]] && IS_FRESH='y'
         if [[ $IS_FRESH == "y" ]]; then
-            cp() { sudo cp -v "$@"; }
+            cp() { sg-sudo cp -v "$@"; }
         else
-            cp() { sudo cp -vi "$@"; }
+            cp() { sg-sudo cp -vi "$@"; }
         fi
         mkdir -p "$HOME/.backups/vim" &> /dev/null
 
         msg yellow " >> Installing /etc/vim/vimrc.local"
-        sudo mkdir /etc/vim &> /dev/null
+        sg-sudo mkdir /etc/vim &> /dev/null
         cp "$LIB_DIR/dotfiles/vimrc" /etc/vim/vimrc.local
         msg yellow " >> Installing extra vim files e.g. syntax highlighting (will make backups for overwritten files in ~/.backups/vim)"
-        sudo rsync --backup --suffix="-$(date +%Y-%m-%d)" --backup-dir "$HOME/.backups/vim/" -av "$LIB_DIR/extras/vim/" /etc/vim/
+        sg-sudo rsync --backup --suffix="-$(date +%Y-%m-%d)" --backup-dir "$HOME/.backups/vim/" -av "$LIB_DIR/extras/vim/" /etc/vim/
 
         if [[ -d "/etc/.tmux" ]]; then
             msg yellow " [!!!] Folder /etc/.tmux already exists. Not cloning github.com/gpakosz/.tmux"
         else
             msg green " >>> Cloning github.com/gpakosz/.tmux into /etc/tmux"
-            sudo git clone https://github.com/gpakosz/.tmux "/etc/tmux"
+            sg-sudo git clone https://github.com/gpakosz/.tmux "/etc/tmux"
         fi
 
         msg yellow " >> Installing /etc/tmux.conf"
@@ -1019,23 +1070,23 @@ install_global() {
                 continue
             fi
             msg cyan "        [...] Linking /etc/tmux to ${home_dir}/.tmux"
-            sudo ln -svi "/etc/tmux" "${home_dir}/.tmux"
+            sg-sudo ln -svi "/etc/tmux" "${home_dir}/.tmux"
 
             msg cyan "        [...] Linking /etc/tmux/.tmux.conf to ${home_dir}/.tmux.conf"
-            sudo ln -svi "/etc/tmux/.tmux.conf" "${home_dir}/.tmux.conf"
+            sg-sudo ln -svi "/etc/tmux/.tmux.conf" "${home_dir}/.tmux.conf"
 
             msg cyan "        [...] Copying $LIB_DIR/dotfiles/tmux.conf.local to ${home_dir}/.tmux.conf.local"
-            sudo cp -vi "$LIB_DIR/dotfiles/tmux.conf.local" "${home_dir}/.tmux.conf.local"
+            sg-sudo cp -vi "$LIB_DIR/dotfiles/tmux.conf.local" "${home_dir}/.tmux.conf.local"
 
             msg cyan "        [...] Fixing ownership of ${home_dir}/.tmux.conf.local"
-            sudo chown "${u}:${u}" "${home_dir}/.tmux.conf.local"
+            sg-sudo chown "${u}:${u}" "${home_dir}/.tmux.conf.local"
         done
 
         if [[ -f /etc/gitconfig && $IS_FRESH == "n" ]]; then
             owgit='n'
             read -p "${YELLOW}/etc/gitconfig already exists... overwrite? (y/n)${RESET} > " owgit
         fi
-        [[ "$owgit" == "y" ]] && cat << EOF | sudo tee /etc/gitconfig >/dev/null
+        [[ "$owgit" == "y" ]] && cat << EOF | sg-sudo tee /etc/gitconfig >/dev/null
 [core]
 	excludesfile = /etc/gitignore
 EOF
@@ -1043,7 +1094,7 @@ EOF
         cp "$LIB_DIR/dotfiles/gitignore" /etc/gitignore
         
         msg yellow " >> Installing /etc/zsh/zsh_sg and /etc/skel/.zshrc"
-        sudo mkdir /etc/zsh &> /dev/null
+        sg-sudo mkdir /etc/zsh &> /dev/null
         cp "$LIB_DIR/extras/zshrc" /etc/zsh/zsh_sg
         cp "$LIB_DIR/extras/zsh_skel" /etc/skel/.zshrc
 
@@ -1053,7 +1104,7 @@ EOF
         if grep -q "source /etc/zsh/zsh_sg" /etc/zsh/zshrc; then
             msg yellow " ... Skipping adding source line to /etc/zsh/zshrc as it's already there"
         else
-            cat << "EOF" | sudo tee -a /etc/zsh/zshrc >/dev/null
+            cat << "EOF" | sg-sudo tee -a /etc/zsh/zshrc >/dev/null
 # Load zshrc from @someguy123/someguy-scripts only if user has no .zshrc
 if [[ ! -f "$HOME/.zshrc" ]]; then
     source /etc/zsh/zsh_sg
@@ -1062,14 +1113,14 @@ EOF
         fi
 
         msg yellow " >> Installing folder /etc/zsh_files/"
-        sudo mkdir /etc/zsh_files &> /dev/null
+        sg-sudo mkdir /etc/zsh_files &> /dev/null
         cp -r "$LIB_DIR/zsh_files/"* /etc/zsh_files/
         
         if [[ -d "/etc/oh-my-zsh" ]]; then
             msg yellow " ... Skipping oh-my-zsh clone as /etc/oh-my-zsh already exists"
         else
             msg yellow " >> Cloning oh-my-zsh into /etc/oh-my-zsh/"
-            sudo git clone --depth=1 https://github.com/robbyrussell/oh-my-zsh.git /etc/oh-my-zsh
+            sg-sudo git clone --depth=1 https://github.com/robbyrussell/oh-my-zsh.git /etc/oh-my-zsh
         fi
         
         install_omz_themes
@@ -1116,7 +1167,7 @@ update_zshrc() {
     msg
     msg yellow "Updating your global zshrc at '/etc/zsh/zsh_sg' by replacing it with '$LIB_DIR/extras/zshrc'..."
     msg
-    sudo cp -v "$LIB_DIR/extras/zshrc" /etc/zsh/zsh_sg
+    sg-sudo cp -v "$LIB_DIR/extras/zshrc" /etc/zsh/zsh_sg
     msg
     msg bold green "(+) Finished."
 }
@@ -1148,8 +1199,8 @@ install_utils() {
     else
         msg bold yellow " [!!!] Binary output folder '$out_dir' is not writable by current user."
         if has_sudo; then
-            msg bold green " [+++] Detecting passwordless working sudo. Will install into $out_dir using sudo."
-            install() { sudo install "$@"; }
+            msg bold green " [+++] Detecting passwordless working sg-sudo. Will install into $out_dir using sg-sudo."
+            install() { sg-sudo install "$@"; }
         else
             msg bold yellow " [!!!] Sudo not available (or requires password)"
             msg bold yellow " [!!!] Will install binary utilities into ${HOME}/.local/bin instead."
@@ -1168,7 +1219,7 @@ install_utils() {
     pkg_not_found python3 python3
     pkg_not_found pip3 python3-pip
     cd "${LIB_DIR}/scripts/privex-utils"
-    sudo ./install.sh
+    sg-sudo ./install.sh
     cd - &>/dev/null
     msg bold green " [+++] Finished\n"
 }

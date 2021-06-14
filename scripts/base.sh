@@ -13,6 +13,12 @@
 # ------------------------------
 
 export PATH="${HOME}/.local/bin:/snap/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin:${PATH}"
+: ${XDEBUG="0"}
+export XDEBUG
+if (( XDEBUG )); then
+    # Extra debugging - Print bash commands and their arguments as they are executed.
+    set -x
+fi
 
 find-cmd() {
     [[ -f "/usr/bin/$1" || -f "/bin/$1" || -f "/usr/sbin/$1" || -f "/sbin/$1" || -f "/usr/local/bin/$1" ]]
@@ -30,43 +36,14 @@ instx() {
     [[ "$1" == "-u" ]] && needsudo=0 && shift
     [[ "$1" == "-q" ]] && outx="/dev/null" && shift
 
-    if (( needsudo == 0 )) || (( EUID == 0 )); then
+    if (( needsudo )); then
+        sg-sudo cp "$1" "$2" &> "$outx"
+        sg-sudo chmod +x "$2"  &> "$outx"
+    else
         cp "$1" "$2" &> "$outx"
         chmod +x "$2"  &> "$outx"
-    elif find-cmd sudo; then
-        sudo cp "$1" "$2" &> "$outx"
-        sudo chmod +x "$2"  &> "$outx"
-    elif find-cmd su; then
-        su -c "cp \"$1\" \"$2\"" &> "$outx"
-        su -c "chmod +x \"$2\"" &> "$outx"
-    else
-        msgerr " [!!!] Failed to find su nor sudo - cannot install '$1' to '$2'"
-        return 9
     fi
 }
-
-if find-cmd python3 && [[ -f /tmp/findbin.py ]]; then
-    instx -q /tmp/findbin.py /usr/bin/findbin
-    if (( EUID == 0 )); then
-        ln -s /usr/bin/findbin /usr/local/bin/findbin
-        [[ ! -f /usr/local/bin/command ]] && ln -s /usr/bin/findbin /usr/local/bin/command
-        [[ ! -f /usr/local/bin/which ]] && ln -s /usr/bin/findbin /usr/local/bin/which
-    elif find-cmd sudo; then
-        sudo ln -s /usr/bin/findbin /usr/local/bin/findbin
-        [[ ! -f /usr/local/bin/command ]] && sudo ln -s /usr/bin/findbin /usr/local/bin/command
-        [[ ! -f /usr/local/bin/which ]] && sudo ln -s /usr/bin/findbin /usr/local/bin/which
-    elif find-cmd su; then
-        su -c 'ln -s /usr/bin/findbin /usr/local/bin/findbin'
-        [[ ! -f /usr/local/bin/command ]] && su -c 'ln -s /usr/bin/findbin /usr/local/bin/command'
-        [[ ! -f /usr/local/bin/which ]] && su -c 'ln -s /usr/bin/findbin /usr/local/bin/which'
-    else
-        msgerr " [!!!] Failed to find su nor sudo - cannot install /usr/bin/findbin to command/which"
-        msgerr " [!!!] Attempting alias function..."
-        command() { SELF_BIN="command" python3 /tmp/findbin.py "$@"; }
-        which() { SELF_BIN="which" python3 /tmp/findbin.py "$@"; }
-        export -f command which
-    fi
-fi
 
 # As base.sh may be compiled into a singular script, it's best to set default variables only when a main
 # function (i.e. sgs_provision) requires them. This ensures scripts appended after base.sh can set their
@@ -117,76 +94,69 @@ has_binary() { sg_has_binary "$@"; }
 has-binary() { sg_has_binary "$@"; }
 export -f has_binary sg_has_binary has-binary sg-has-binary
 
+
+sg-sudo() {
+    if (( EUID == 0 )); then
+        _debug "EUID is 0 (root). Using eval to evaluate the passed arguments directly: $*"
+        # Iterate over args and remove any switch/flag arguments for sudo, until the first
+        # arg which doesn't start with a dash.
+        while (( $# > 0 )); do
+            [[ "$1" == "--" ]] && break
+            grep -Eq '^\-' <<< "$1" && shift || break
+        done
+            
+        eval "$@"
+        return $?
+    else
+        if sg-has-binary sudo; then
+            _debug "User is not root, but found sudo. Running sudo with args: $*"
+            if [[ -f "/usr/bin/findbin" ]]; then
+                local sdbin="$(/usr/bin/findbin sudo)"
+                _debug "Found direct path to sudo binary using findbin: $sdbin"
+                "$sdbin" -- "$@"
+                return $?
+            else
+                _debug "findbin not available. Using env to run sudo: env sudo -- $*"
+                env sudo -- "$@"
+                return $?
+            fi
+        elif sg-has-binary su; then
+            _debug "sudo not available but su is. using su: su -c \"$(printf '%q ' "$@")\""
+            # Iterate over args and remove any switch/flag arguments for sudo, until the first
+            # arg which doesn't start with a dash.
+            while (( $# > 0 )); do
+                [[ "$1" == "--" ]] && break
+                grep -Eq '^\-' <<< "$1" && shift || break
+            done
+            su -c "$(printf '%q ' "$@")"
+            return $?
+        else
+            msgerr " [!!!] ERROR: Neither sudo nor su are available, and you're not root. Cannot run: $*"
+            return 9
+        fi
+    fi
+}
+xsudo() { sg-sudo "$@"; }
+unalias sudo &> /dev/null
+unset sudo &> /dev/null
+sudo() { sg-sudo "$@"; }
+
+export -f sg-sudo xsudo sudo
+
+
+if find-cmd python3 && [[ -f /tmp/findbin.py ]]; then
+    instx -q /tmp/findbin.py /usr/bin/findbin
+    sg-sudo ln -s /usr/bin/findbin /usr/local/bin/findbin
+    [[ ! -f /usr/local/bin/command ]] && sg-sudo ln -s /usr/bin/findbin /usr/local/bin/command
+    [[ ! -f /usr/local/bin/which ]] && sg-sudo ln -s /usr/bin/findbin /usr/local/bin/which
+fi
+
+
 if ! find-cmd sudo && [ "$EUID" -eq 0 ]; then
-    sudo() { env "$@"; }
     has_sudo() { return 0; }
 else
     has_sudo() { sudo -n ls > /dev/null; }
 fi
-# if ! has_binary which && ! [[ -f "/usr/local/bin/which" ]]; then
-#     msgerr " !!! Creating shim which at /usr/local/bin/which !!!"
-#     sudo tee /usr/local/bin/which <<"EOF"
-# #!/usr/bin/env bash
-# export PATH="${HOME}/.local/bin:/snap/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin:${PATH}"
-# if [[ -f "/usr/bin/command" || -f "/bin/command" || -f "/usr/sbin/command" || -f "/sbin/command" || -f "/usr/local/bin/command" ]]; then
-#     env -- command -v "$1" &> /dev/null;
-#     exit $?
-# elif [[ -f "/usr/bin/whereis" || -f "/bin/whereis" || -f "/usr/sbin/whereis" || -f "/sbin/whereis" || -f "/usr/local/bin/whereis"  ]]; then
-#     wi="$(env -- whereis "$1" &> /dev/null)"
-#     [[ "$wi" != "${q}:" && "$wi" != "${q}: " &&  "$wi" != "${q}:\t" ]]
-#     exit $?
-# else
-#     command -v "$q" &> /dev/null;
-#     exit $?
-# fi
-
-# EOF
-#     sudo chmod +x /usr/local/bin/which
-# fi
-
-# if ! [[ -f "/usr/bin/command" || -f "/bin/command" || -f "/usr/sbin/command" || -f "/sbin/command" || -f "/usr/local/bin/command" ]]; then
-#     sudo tee /usr/local/bin/command <<"EOF"
-# q="$1"
-# if [[ -f "/usr/bin/command" || -f "/bin/command" || -f "/usr/sbin/command" || -f "/sbin/command" ]]; then
-#     env -- command -v "$1" &> /dev/null;
-#     return $?
-# elif [[ -f "/usr/bin/whereis" || -f "/bin/whereis" || -f "/usr/sbin/whereis" || -f "/sbin/whereis" || -f "/usr/local/bin/whereis"  ]]; then
-#     wi="$(env -- whereis "$1" &> /dev/null)"
-#     [[ "$wi" != "${q}:" && "$wi" != "${q}: " &&  "$wi" != "${q}:\t" ]]
-#     return $?
-# else
-#     command -v "$q" &> /dev/null;
-#     return $?
-# fi
-
-# EOF
-#     sudo chmod +x /usr/local/bin/command
-# fi
-
-# if ! has_command which; then
-#     if has_command whereis && [[ -x "$(whereis whereis)" ]]; then
-#         which() { env -- whereis "$1"; [[ "$(env -- whereis "$1")" != "$1:" ]]; }
-#         has_binary() { [[ "$(env -- whereis -b "$1")" != "$1:" ]]; }
-#     else
-#         which() { env -- command -v "$1"; }
-#         has_binary() {
-#             local cmdloc="$(env -- command -v "$1")"
-#             [[ -n "$cmdloc" ]] && [[ -f "$cmdloc" ]] && [[ -x "$cmdloc" ]];
-#         }
-#     fi
-#     export -f which
-# else
-#     has_binary() { /usr/bin/env which "$1" > /dev/null; }
-# fi
-
-# If we don't have sudo, but the user is root, then just create a pass-thru 
-# sudo function that simply runs the passed commands via env.
-# if ! has_binary sudo && [ "$EUID" -eq 0 ]; then
-#     sudo() { env "$@"; }
-#     has_sudo() { return 0; }
-# else
-#     has_sudo() { sudo -n ls > /dev/null; }
-# fi
 
 
 OS="$(uname -s)"
@@ -297,7 +267,7 @@ get-rhel-equiv() {
 
 
 pkg-installed() {
-    sudo "$PKG_INSTALLED" "$@" &> /dev/null
+    sg-sudo "$PKG_INSTALLED" "$@" &> /dev/null
 }
 
 install-pkg() {
@@ -308,11 +278,11 @@ install-pkg() {
     if [[ "$BASE_OS" == "debian" && "$APT_UPDATED" == "n" ]]; then
         _debug yellow " [install-pkg] Running debian package manager update command: sudo $BASE_PKG_MGR update -qy"
         msg bold blue "     > Updating apt repository data, please wait..."
-        sudo "$BASE_PKG_MGR" update -qy &> /dev/null
+        sg-sudo "$BASE_PKG_MGR" update -qy &> /dev/null
         APT_UPDATED="y" PKG_MGR_UPDATED=1
     elif (( PKG_MGR_UPDATED == 0 )) && [[ -n "$PKG_UPDATE" ]]; then
         _debug yellow " [install-pkg] Running OS '$BASE_OS' package manager update command: sudo $PKG_UPDATE"
-        sudo $PKG_UPDATE
+        sg-sudo $PKG_UPDATE
         PKG_MGR_UPDATED=1
     fi
     if is-rhel; then
@@ -329,7 +299,8 @@ install-pkg() {
         _new_pkgs=()
         _debug yellow " ---> Stripping any packages that are already installed using command: $PKG_INSTALLED"
         for p in "${pkglst[@]}"; do
-            pkg-installed "$p" && continue
+            pkg-installed "$p" && _debug yellow " ------> Package '$p' is already installed. removing from list." continue
+            _debug yellow " ------> Package '$p' not installed. adding to list."
             _new_pkgs+=("$p")
         done
         pkglst=("${_new_pkgs[@]}")
@@ -339,10 +310,10 @@ install-pkg() {
     if [[ "$BASE_OS" == "debian" ]]; then
         _DEB_EX_ARGS=("-o" "Dpkg::Options::='--force-confold'" "-o" "Dpkg::Use-Pty=0" "--force-yes" "install" "-qq" "-y")
         _debug yellow " [install-pkg] OS appears to be debian, using $BASE_PKG_MGR - sudo $BASE_PKG_MGR ${_DEB_EX_ARGS[*]} ${pkglst[*]}"
-        DEBIAN_FRONTEND=noninteractive sudo "$BASE_PKG_MGR" "${_DEB_EX_ARGS[@]}" "${pkglst[@]}" &>/dev/null
+        DEBIAN_FRONTEND=noninteractive sg-sudo "$BASE_PKG_MGR" "${_DEB_EX_ARGS[@]}" "${pkglst[@]}" &>/dev/null
     elif [[ -n "$PKG_INSTALL" ]]; then
         _debug yellow " [install-pkg] Running package manager install command: sudo $PKG_INSTALL ${pkglst[*]}"
-        if ! sudo $PKG_INSTALL "${pkglst[@]}" ; then
+        if ! sg-sudo $PKG_INSTALL "${pkglst[@]}" ; then
             if [[ -n "$PKG_INSTALLED" ]]; then
                 _new_pkgs=()
                 _debug yellow " ---> Stripping any packages that are already installed using command: $PKG_INSTALLED"
@@ -354,7 +325,7 @@ install-pkg() {
             fi
             for pk in "${pkglst[@]}"; do
                 _debug yellow " [install-pkg] Installing individual package $pk - running package manager install command: sudo $PKG_INSTALL ${pk}"
-                sudo $PKG_INSTALL "$pk"
+                sg-sudo $PKG_INSTALL "$pk"
             done
         fi
     fi
@@ -418,7 +389,12 @@ sg-has-binary() { sg_has_binary "$@"; }
 has_binary() { sg_has_binary "$@"; }
 has-binary() { sg_has_binary "$@"; }
 export -f has_binary sg_has_binary has-binary sg-has-binary
-
+if ! sg-has-binary sudo && [ "$EUID" -eq 0 ]; then
+    # sudo() { env -- "$@"; }
+    has_sudo() { return 0; }
+else
+    has_sudo() { sudo -n ls > /dev/null; }
+fi
 
 sg_copyright() {
     msg "${_LN}"
