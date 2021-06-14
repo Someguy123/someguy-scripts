@@ -95,7 +95,7 @@ export -f has_binary sg_has_binary has-binary sg-has-binary
 
 sg-sudo() {
     if (( EUID == 0 )); then
-        _debug "EUID is 0 (root). Using eval to evaluate the passed arguments directly: $*"
+        _debug "EUID is 0 (root). Using env to evaluate the passed arguments directly: $*"
         # Iterate over args and remove any switch/flag arguments for sudo, until the first
         # arg which doesn't start with a dash.
         while (( $# > 0 )); do
@@ -110,8 +110,9 @@ sg-sudo() {
                 break
             fi
         done
-            
-        eval "$@"
+        _debug "Running env: $*"
+        
+        env -- "$@"
         return $?
     else
         if sg-has-binary sudo; then
