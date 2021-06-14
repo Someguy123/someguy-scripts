@@ -99,8 +99,16 @@ sg-sudo() {
         # Iterate over args and remove any switch/flag arguments for sudo, until the first
         # arg which doesn't start with a dash.
         while (( $# > 0 )); do
+            if [[ "$1" == "sudo" || "$1" == "sg-sudo" ]]; then
+                msgerr "Attempted to run sudo with sudo!!!!"
+                return 2
+            fi
             [[ "$1" == "--" ]] && break
-            grep -Eq '^\-' <<< "$1" && shift || break
+            if grep -Eq '^\-' <<< "$1"; then
+                shift
+            else
+                break
+            fi
         done
             
         eval "$@"
@@ -123,8 +131,16 @@ sg-sudo() {
             # Iterate over args and remove any switch/flag arguments for sudo, until the first
             # arg which doesn't start with a dash.
             while (( $# > 0 )); do
+                if [[ "$1" == "sudo" || "$1" == "sg-sudo" ]]; then
+                    msgerr "Attempted to run sudo with sudo!!!!"
+                    return 2
+                fi
                 [[ "$1" == "--" ]] && break
-                grep -Eq '^\-' <<< "$1" && shift || break
+                if grep -Eq '^\-' <<< "$1"; then
+                    shift
+                else
+                    break
+                fi
             done
             su -c "$(printf '%q ' "$@")"
             return $?
