@@ -21,7 +21,7 @@ if (( XDEBUG )); then
     set -x
 fi
 
-export SG_SCRIPTS_VERSION='2.6.0'
+export SG_SCRIPTS_VERSION='2.6.1'
 
 msg() {
     echo -e "$@"
@@ -184,13 +184,13 @@ PKG_MGR_UPDATED=0
 
 if [[ -z "$PKG_INSTALL" || -z "$BASE_OS" ]]; then
     [[ -f /etc/debian_version ]] && BASE_OS="debian"
-    sg-has-binary apt-get && sg-has-binary dpkg && BASE_OS="debian"
     [[ -f /etc/redhat-release ]] && BASE_OS="rhel"
     [[ -f /etc/oracle-release ]] && BASE_OS="rhel"
-    { sg-has-binary yum || sg-has-binary dnf; } && BASE_OS="rhel"
     [[ -f "/etc/arch-release" ]] && sg-has-binary pacman && BASE_OS="arch"
     [[ -f "/etc/gentoo-release" ]] && sg-has-binary emerge && BASE_OS="gentoo"
     [[ -f "/etc/alpine-release" ]] && sg-has-binary apk && BASE_OS="alpine"
+    [[ -z "$BASE_OS" ]] && { sg-has-binary yum || sg-has-binary dnf; } && BASE_OS="rhel"
+    [[ -z "$BASE_OS" ]] && sg-has-binary apt-get && sg-has-binary dpkg && BASE_OS="debian"
 fi
 
 if [[ -z "$PKG_INSTALL" || -z "$PKG_UPDATE" ]]; then
@@ -491,13 +491,48 @@ gnusafe || return 1 2>/dev/null || exit 1
 : ${INSTALL_EPEL=1}
 : ${EPEL_URL_FEDORA="https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm"}
 : ${EPEL_ORACLE_VERSION="8"}
-: ${EPEL_ORACLE_FILE="/etc/yum.repos.d/ol${EPEL_ORACLE_VERSION}-epel.repo"}
+: ${REPOS_DIR=""}
+
+if [[ -z "$REPOS_DIR" ]]; then
+    [[ -d /etc/dnf.repos.d ]] && REPOS_DIR="/etc/dnf.repos.d"
+    [[ -z "$REPOS_DIR" ]] && [[ -d /etc/dnf/repos.d ]] && REPOS_DIR="/etc/dnf/repos.d"
+    [[ -z "$REPOS_DIR" ]] && [[ -d /etc/dnf/dnf.repos.d ]] && REPOS_DIR="/etc/dnf/dnf.repos.d"
+    [[ -z "$REPOS_DIR" ]] && [[ -d /etc/yum.repos.d ]] && REPOS_DIR="/etc/yum.repos.d"
+    [[ -z "$REPOS_DIR" ]] && [[ -d /etc/yum/yum.repos.d ]] && REPOS_DIR="/etc/yum/yum.repos.d"
+    [[ -z "$REPOS_DIR" ]] && [[ -d /etc/yum/repos.d ]] && REPOS_DIR="/etc/yum/repos.d"
+fi
+
+: ${EPEL_ORACLE_FILE="${REPOS_DIR}/ol${EPEL_ORACLE_VERSION}-epel.repo"}
+
+: ${DISABLE_TESTING_EPEL="1"}
+DISABLED_TESTING=0
+
+disable-testing-epel() {
+    if (( DISABLED_TESTING )); then
+        _debug "[disable-testing-epel] DISABLED_TESTING is true (${DISABLED_TESTING}). Not running again."
+        return
+    fi
+    if ! (( DISABLE_TESTING_EPEL )); then
+        msgerr yellow " !!! DISABLE_TESTING_EPEL is false (0) - not disabling epel-testing repos !!!"
+        DISABLED_TESTING=1
+        return
+    fi
+    if [[ -z "$REPOS_DIR" ]] || ! [[ -d "$REPOS_DIR" ]]; then
+        msgerr red " !!! Cannot remove testing EPEL repos because REPOS_DIR is empty / not a folder. REPOS_DIR = '${REPOS_DIR}'"
+        return 1
+    fi
+    [[ -f "${REPOS_DIR}/epel-testing-modular.repo" ]] && mv -v "${REPOS_DIR}/epel-testing-modular.repo" "${REPOS_DIR}/epel-testing-modular.repo.disabled"
+    [[ -f "${REPOS_DIR}/epel-testing.repo" ]] && mv -v "${REPOS_DIR}/epel-testing.repo" "${REPOS_DIR}/epel-testing.repo.disabled"
+    DISABLED_TESTING=1
+}
 
 install-epel-fedora() {
     msgerr bold cyan " >>> Installing Fedora EPEL from URL: $EPEL_URL_FEDORA"
-    sg-sudo $PKG_MGR_INSTALL "$EPEL_URL_FEDORA" 
+    sg-sudo $PKG_MGR_INSTALL "$EPEL_URL_FEDORA"
+    disable-testing-epel
     msgerr cyan " -----> ... Updating repo cache using: $PKG_MGR_UPDATE  ..."
     sg-sudo $PKG_MGR_UPDATE
+    disable-testing-epel
 }
 install-epel-rhel() {
     msgerr bold cyan " >>> Installing EPEL for Red Hat Enterprise Linux (RHEL)"
@@ -508,7 +543,7 @@ install-epel-rhel() {
 install-epel-oracle() {
     msgerr bold cyan " >>> Installing EPEL for Oracle Linux ${EPEL_ORACLE_VERSION}"
     msgerr cyan " -----> Creating EPEL repo file at: $EPEL_ORACLE_FILE"
-    sg-sudo tee "/etc/yum.repos.d/ol${EPEL_ORACLE_VERSION}-epel.repo" <<EOF
+    sg-sudo tee "$EPEL_ORACLE_FILE" <<EOF
 [ol${EPEL_ORACLE_VERSION}_developer_EPEL]
 name= Oracle Linux \$releasever EPEL (\$basearch)
 baseurl=https://yum.oracle.com/repo/OracleLinux/OL${EPEL_ORACLE_VERSION}/developer/EPEL/\$basearch/
@@ -520,6 +555,7 @@ EOF
     msgerr cyan " -----> ... Updating repo cache using: $PKG_MGR_UPDATE  ..."
     sg-sudo $PKG_MGR_UPDATE
     install-epel-fedora
+    disable-testing-epel
     msgerr bold green " [+++] Finished installing EPEL for Oracle Linux"
 }
 
@@ -539,6 +575,7 @@ install-epel-centos() {
             sleep 2
             install-epel-fedora
         fi
+        disable-testing-epel
         msgerr bold green " [+++] Finished installing EPEL for CentOS"
     fi
 }
@@ -574,6 +611,7 @@ install-epel() {
         fi
         install-epel-fedora
     fi
+    disable-testing-epel
 }
 
 
@@ -599,7 +637,7 @@ if [ -z ${INSTALL_PKGS+x} ]; then
         pigz        # multi-threaded gzip
         p7zip       # handles rar's and 7z
         lzip        # LZMA - for .lz / .lzo / .lzma files
-        zip unzip xz-utils
+        zip unzip unrar xz-utils tar
         # Python3 for various things
         python3 python3-pip python3-venv
         "python3.8" "python3.8-dev" "python3.8-venv"
